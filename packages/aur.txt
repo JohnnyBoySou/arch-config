@@ -1,0 +1,10 @@
+apple_cursor
+google-chrome
+hyprland-plugin-hyprbars
+kvantum-theme-whitesur-git
+otf-san-francisco
+vicinae-bin
+whitesur-gtk-theme
+whitesur-icon-theme
+yay
+yay-debug

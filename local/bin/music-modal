@@ -1,0 +1,1019 @@
+#!/usr/bin/env python3
+"""Now Playing — modal central com disco de vinil girando e capa borrada.
+
+Aberto pelo modulo mpris da Waybar. Segunda invocacao fecha (toggle).
+Fecha tambem com ESC ou clique fora do card.
+"""
+import os
+import sys
+import math
+import signal
+import hashlib
+import struct
+import subprocess
+import threading
+import json
+import urllib.request
+import urllib.parse
+
+# gtk4-layer-shell precisa vir antes de libwayland-client no linker. Como o
+# Python carrega tudo dinamicamente, a unica saida e pre-carregar a lib e
+# reexecutar o processo uma vez.
+_LS_LIB = "/usr/lib/libgtk4-layer-shell.so"
+if os.path.exists(_LS_LIB) and _LS_LIB not in os.environ.get("LD_PRELOAD", ""):
+    pre = os.environ.get("LD_PRELOAD", "")
+    os.environ["LD_PRELOAD"] = _LS_LIB + (":" + pre if pre else "")
+    os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+import gi
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gtk4LayerShell", "1.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import (Gtk, Gdk, GLib, Graphene, GdkPixbuf,
+                           Gtk4LayerShell as LS)
+import cairo
+
+CACHE = os.path.expanduser("~/.cache/album-art")
+PIDFILE = os.path.expanduser("~/.cache/music-modal.pid")
+SELF = os.path.basename(__file__)
+DEBUG = os.environ.get("MUSIC_MODAL_DEBUG") == "1"
+
+SEP = "\x1f"
+FMT = SEP.join([
+    "{{status}}", "{{position}}", "{{mpris:length}}", "{{mpris:artUrl}}",
+    "{{xesam:title}}", "{{xesam:artist}}", "{{xesam:album}}", "{{mpris:trackid}}",
+])
+
+VINYL_PX = 190
+RPM = 33.333          # 33 1/3 rotacoes por minuto, como um LP de verdade
+
+MODES = ("vinyl", "bars", "orb", "wave")
+MODE_FILE = os.path.expanduser("~/.cache/music-modal.mode")
+
+
+def load_mode():
+    try:
+        m = open(MODE_FILE).read().strip()
+        return m if m in MODES else MODES[0]
+    except Exception:
+        return MODES[0]
+
+
+def save_mode(mode):
+    try:
+        with open(MODE_FILE, "w") as fh:
+            fh.write(mode)
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+def rgba(r, g, b, a=1.0):
+    c = Gdk.RGBA()
+    c.red, c.green, c.blue, c.alpha = r, g, b, a
+    return c
+
+
+def playerctl(*args):
+    try:
+        p = subprocess.run(["playerctl", *args], capture_output=True,
+                           text=True, timeout=2)
+        return p.stdout.strip() if p.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def poll():
+    """Le status + metadados numa unica chamada ao playerctl."""
+    raw = playerctl("metadata", "--format", FMT)
+    if raw is None:
+        return None
+    f = raw.split(SEP)
+    f += [""] * (8 - len(f))
+
+    def num(s):
+        try:
+            return int(s)
+        except ValueError:
+            return 0
+
+    return {
+        "status": f[0] or "Stopped",
+        "position": num(f[1]),
+        "length": num(f[2]),
+        "art": f[3],
+        "title": f[4] or "Sem titulo",
+        "artist": f[5],
+        "album": f[6],
+        "trackid": f[7],
+    }
+
+
+def mmss(usec):
+    s = max(0, int(usec // 1_000_000))
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def art_path(url):
+    """Resolve mpris:artUrl para um caminho local (o Chrome ja salva em /tmp)."""
+    if not url:
+        return None
+    if url.startswith("file://"):
+        p = urllib.parse.unquote(url[7:])
+        return p if os.path.exists(p) else None
+    if url.startswith("http"):
+        os.makedirs(CACHE, exist_ok=True)
+        dst = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest())
+        if not os.path.exists(dst):
+            try:
+                urllib.request.urlretrieve(url, dst)
+            except Exception:
+                return None
+        return dst
+    return None
+
+
+def hq_art(artist, album, title):
+    """Capa em alta resolucao pela API publica do iTunes (a do MPRIS tem 150px).
+
+    Cacheado em disco; um arquivo vazio marca 'procurei e nao achei'.
+    """
+    first = (artist or "").split(",")[0].strip()
+    term = " ".join(x for x in (first, album or title) if x).strip()
+    if not term:
+        return None
+    os.makedirs(CACHE, exist_ok=True)
+    dst = os.path.join(CACHE, "hq-" + hashlib.sha1(term.lower().encode()).hexdigest() + ".jpg")
+    if os.path.exists(dst):
+        return dst if os.path.getsize(dst) > 0 else None
+    try:
+        q = urllib.parse.urlencode({"term": term, "limit": 1, "entity": "album"})
+        with urllib.request.urlopen("https://itunes.apple.com/search?" + q, timeout=6) as r:
+            data = json.load(r)
+        results = data.get("results") or []
+        if not results:
+            raise ValueError("sem resultados")
+        url = results[0].get("artworkUrl100", "")
+        if not url:
+            raise ValueError("sem artwork")
+        url = url.replace("100x100bb", "1000x1000bb")
+        urllib.request.urlretrieve(url, dst)
+        if os.path.getsize(dst) == 0:
+            raise ValueError("download vazio")
+        return dst
+    except Exception:
+        open(dst, "wb").close()   # marca negativo para nao repetir a busca
+        return None
+
+
+def texture_from_surface(surf):
+    surf.flush()
+    data = GLib.Bytes.new(bytes(surf.get_data()))
+    return Gdk.MemoryTexture.new(surf.get_width(), surf.get_height(),
+                                 Gdk.MemoryFormat.B8G8R8A8_PREMULTIPLIED,
+                                 data, surf.get_stride())
+
+
+def load_texture(path):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        return Gdk.Texture.new_from_filename(path)
+    except Exception:
+        return None
+
+
+def make_disc(size, cover_path=None):
+    """Desenha o disco inteiro: corpo, sulcos, capa no label, furo e reflexo.
+
+    Feito uma vez por musica; a animacao so gira a textura resultante.
+    """
+    s = int(size)
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, s, s)
+    cr = cairo.Context(surf)
+    c = s / 2.0
+    label_r = c * 0.42
+
+    g = cairo.RadialGradient(c, c, s * 0.05, c, c, c)
+    g.add_color_stop_rgb(0.0, 0.11, 0.11, 0.12)
+    g.add_color_stop_rgb(0.7, 0.06, 0.06, 0.07)
+    g.add_color_stop_rgb(1.0, 0.02, 0.02, 0.03)
+    cr.arc(c, c, c, 0, 2 * math.pi)
+    cr.set_source(g)
+    cr.fill()
+
+    cr.set_line_width(1.0)
+    r = c * 0.985
+    i = 0
+    while r > label_r:
+        cr.set_source_rgba(1, 1, 1, 0.055 if i % 2 == 0 else 0.018)
+        cr.arc(c, c, r, 0, 2 * math.pi)
+        cr.stroke()
+        r -= 2.4
+        i += 1
+
+    if cover_path:
+        try:
+            side = int(label_r * 2)
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(cover_path, side, side, False)
+            cr.save()
+            cr.arc(c, c, label_r, 0, 2 * math.pi)
+            cr.clip()
+            Gdk.cairo_set_source_pixbuf(cr, pb, c - label_r, c - label_r)
+            cr.paint()
+            cr.restore()
+        except Exception:
+            pass
+        cr.set_source_rgba(0, 0, 0, 0.40)
+        cr.set_line_width(2.0)
+        cr.arc(c, c, label_r, 0, 2 * math.pi)
+        cr.stroke()
+
+    # faixa de brilho: gira junto com o disco e denuncia o movimento
+    lg = cairo.LinearGradient(0, 0, s, s)
+    for stop, a in ((0.0, 0.0), (0.34, 0.05), (0.5, 0.10), (0.66, 0.05), (1.0, 0.0)):
+        lg.add_color_stop_rgba(stop, 1, 1, 1, a)
+    cr.arc(c, c, c, 0, 2 * math.pi)
+    cr.set_source(lg)
+    cr.fill()
+
+    hr = s * 0.020
+    cr.set_source_rgba(0.05, 0.05, 0.06, 1.0)
+    cr.arc(c, c, hr, 0, 2 * math.pi)
+    cr.fill()
+
+    return texture_from_surface(surf)
+
+
+class AudioSpectrum:
+    """Energia por banda do que esta saindo pelas caixas.
+
+    Le o monitor do PipeWire com parec e usa Goertzel em vez de FFT: so
+    precisamos de ~18 frequencias, o que sai barato (~7% de um core) sem
+    depender de numpy nem de cava.
+    """
+    RATE = 16000
+    BLOCK = 512
+    BANDS = 18
+
+    def __init__(self):
+        self.levels = [0.0] * self.BANDS
+        self._coeffs = []
+        for i in range(self.BANDS):
+            f = 50.0 * (6000.0 / 50.0) ** (i / (self.BANDS - 1))
+            k = round(f * self.BLOCK / self.RATE)
+            self._coeffs.append(2.0 * math.cos(2.0 * math.pi * k / self.BLOCK))
+        self._proc = None
+        self._running = False
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def stop(self):
+        self._running = False
+        self._kill()
+        self.levels = [0.0] * self.BANDS
+
+    def _kill(self):
+        if self._proc:
+            try:
+                self._proc.kill()
+            except Exception:
+                pass
+            self._proc = None
+
+    def _loop(self):
+        try:
+            self._proc = subprocess.Popen(
+                ["parec", "--format=s16le", "--rate=%d" % self.RATE, "--channels=1",
+                 "--latency-msec=30", "-d", "@DEFAULT_MONITOR@"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except Exception:
+            self._running = False
+            return
+
+        need = self.BLOCK * 2
+        unpack = struct.Struct("<%dh" % self.BLOCK).unpack
+        smooth = [0.0] * self.BANDS
+        while self._running:
+            try:
+                raw = self._proc.stdout.read(need)
+            except Exception:
+                break
+            if not raw or len(raw) < need:
+                break
+            xs = [v / 32768.0 for v in unpack(raw)]
+            for i, c in enumerate(self._coeffs):
+                s1 = s2 = 0.0
+                for x in xs:
+                    s0 = x + c * s1 - s2
+                    s2, s1 = s1, s0
+                mag = math.sqrt(max(0.0, s1 * s1 + s2 * s2 - c * s1 * s2)) / self.BLOCK
+                v = min(1.0, (mag * 62.0) ** 0.60)       # curva perceptual
+                # sobe na hora e desce devagar: e isso que da sensacao de ritmo
+                smooth[i] = v if v > smooth[i] else smooth[i] * 0.80 + v * 0.20
+            self.levels = list(smooth)      # troca atomica; a UI so le
+        self._kill()
+        self._running = False
+
+
+def dominant_color(path, fallback=(0.36, 0.66, 1.0)):
+    """Cor de destaque da capa: media dos pixels mais saturados."""
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 40, 40, False)
+    except Exception:
+        return fallback
+    data = pb.get_pixels()
+    nch, stride = pb.get_n_channels(), pb.get_rowstride()
+    picked = []
+    for y in range(pb.get_height()):
+        row = y * stride
+        for x in range(pb.get_width()):
+            o = row + x * nch
+            r, g, b = data[o] / 255.0, data[o + 1] / 255.0, data[o + 2] / 255.0
+            mx, mn = max(r, g, b), min(r, g, b)
+            if mx > 0 and (mx - mn) / mx > 0.32 and 0.20 < mx < 0.98:
+                picked.append((r, g, b))
+    if not picked:
+        return fallback
+    n = len(picked)
+    r = sum(c[0] for c in picked) / n
+    g = sum(c[1] for c in picked) / n
+    b = sum(c[2] for c in picked) / n
+    mx = max(r, g, b) or 1.0
+    k = min(1.0 / mx, 1.7)      # levanta o brilho, senao some no fundo escuro
+    return (min(1.0, r * k), min(1.0, g * k), min(1.0, b * k))
+
+
+# --------------------------------------------------------------------------- #
+# widgets
+# --------------------------------------------------------------------------- #
+class Stage(Gtk.Widget):
+    """Area central do card: o disco de vinil ou uma visualizacao do audio.
+
+    Um clique cicla entre os modos de MODES.
+    """
+    __gtype_name__ = "NowPlayingStage"
+
+    def __init__(self, size=VINYL_PX, spectrum=None):
+        super().__init__()
+        self.size = size
+        self.spectrum = spectrum
+        self.mode = load_mode()
+        self.accent = (0.36, 0.66, 1.0)
+        self.angle = 0.0
+        self.spinning = False
+        self._cover = None
+        self._disc = None
+        self._label = None          # capa recortada em circulo, p/ orb e wave
+        self._built_for = None
+        self._last = None
+        self.add_tick_callback(self._tick)
+
+    def do_measure(self, orientation, for_size):
+        return (self.size, self.size, -1, -1)
+
+    def set_cover(self, path):
+        if path != self._cover:
+            self._cover = path
+            self._built_for = None
+            self._label = None
+            self.accent = dominant_color(path)
+            self.queue_draw()
+
+    def set_spinning(self, on):
+        if on != self.spinning:
+            self.spinning = on
+            self._last = None
+            self.queue_draw()
+
+    def cycle_mode(self):
+        self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
+        save_mode(self.mode)
+        self.sync_audio()
+        self.queue_draw()
+        return self.mode
+
+    def sync_audio(self):
+        """So captura audio quando alguma visualizacao precisa dele."""
+        if self.spectrum is None:
+            return
+        if self.mode == "vinyl":
+            self.spectrum.stop()
+        else:
+            self.spectrum.start()
+
+    def _tick(self, widget, clock):
+        t = clock.get_frame_time()
+        if self._last is None:
+            self._last = t
+        dt = (t - self._last) / 1_000_000.0
+        self._last = t
+        if self.mode == "vinyl":
+            if self.spinning:
+                self.angle = (self.angle + dt * RPM * 6.0) % 360.0
+                self.queue_draw()
+        else:
+            self.angle = (self.angle + dt * 24.0) % 360.0
+            # o espectro so atualiza ~31x/s; redesenhar a 60 fps e desperdicio
+            self._acc = getattr(self, "_acc", 0.0) + dt
+            if self._acc >= 1.0 / 33.0:
+                self._acc = 0.0
+                self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    # -- desenho ----------------------------------------------------------- #
+    def do_snapshot(self, snapshot):
+        w, h = self.get_width(), self.get_height()
+        size = min(w, h)
+        if size <= 0:
+            return
+
+        if self.mode == "vinyl":
+            if self._built_for != (size, self._cover):
+                self._disc = make_disc(size, self._cover)
+                self._built_for = (size, self._cover)
+            if not self._disc:
+                return
+            snapshot.save()
+            snapshot.translate(Graphene.Point().init(w / 2.0, h / 2.0))
+            snapshot.rotate(self.angle)
+            snapshot.translate(Graphene.Point().init(-size / 2.0, -size / 2.0))
+            snapshot.append_texture(self._disc, Graphene.Rect().init(0, 0, size, size))
+            snapshot.restore()
+            return
+
+        cr = snapshot.append_cairo(Graphene.Rect().init(0, 0, w, h))
+        levels = self.spectrum.levels if self.spectrum else [0.0] * 18
+        if self.mode == "bars":
+            self._draw_bars(cr, w, h, levels)
+        elif self.mode == "orb":
+            self._draw_orb(cr, w, h, levels)
+        else:
+            self._draw_wave(cr, w, h, levels)
+
+    def _cover_label(self, diameter):
+        """Capa ja recortada em circulo, cacheada por diametro."""
+        d = int(diameter)
+        if d <= 0 or not self._cover:
+            return None
+        if self._label and self._label[0] == d:
+            return self._label[1]
+        surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, d, d)
+        cr = cairo.Context(surf)
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(self._cover, d, d, False)
+        except Exception:
+            return None
+        cr.arc(d / 2.0, d / 2.0, d / 2.0, 0, 2 * math.pi)
+        cr.clip()
+        Gdk.cairo_set_source_pixbuf(cr, pb, 0, 0)
+        cr.paint()
+        surf.flush()
+        self._label = (d, surf)
+        return surf
+
+    def _draw_bars(self, cr, w, h, lv):
+        """Barras espelhadas a partir do centro."""
+        r, g, b = self.accent
+        n = len(lv)
+        gap = 3.0
+        bw = (w - gap * (n - 1)) / n
+        mid = h / 2.0
+        cap = bw / 2.0
+        for i, v in enumerate(lv):
+            x = i * (bw + gap)
+            half = max(cap, v * (h / 2.0) * 0.94)
+            grad = cairo.LinearGradient(0, mid - half, 0, mid + half)
+            grad.add_color_stop_rgba(0.0, min(1, r + 0.25), min(1, g + 0.25), min(1, b + 0.25), 0.95)
+            grad.add_color_stop_rgba(0.5, r, g, b, 1.0)
+            grad.add_color_stop_rgba(1.0, min(1, r + 0.25), min(1, g + 0.25), min(1, b + 0.25), 0.95)
+            cr.set_source(grad)
+            _round_rect(cr, x, mid - half, bw, half * 2, cap)
+            cr.fill()
+
+    def _draw_orb(self, cr, w, h, lv):
+        """Bola pulsante: os graves inflam o nucleo, os agudos acendem o halo."""
+        r, g, b = self.accent
+        c = min(w, h) / 2.0
+        cx, cy = w / 2.0, h / 2.0
+        bass = sum(lv[:5]) / 5.0
+        high = sum(lv[10:]) / max(1, len(lv) - 10)
+        core = c * (0.42 + 0.16 * bass)
+
+        for i in (2.2, 1.7, 1.32):
+            rad = min(core * i, c)      # alem de c o arco e cortado e vira quadrado
+            halo = cairo.RadialGradient(cx, cy, core * 0.7, cx, cy, rad)
+            halo.add_color_stop_rgba(0.0, r, g, b, 0.42 * (0.45 + high))
+            halo.add_color_stop_rgba(1.0, r, g, b, 0.0)
+            cr.set_source(halo)
+            cr.arc(cx, cy, rad, 0, 2 * math.pi)
+            cr.fill()
+
+        # tamanho fixo: o raio do nucleo muda a cada frame e, se o label
+        # acompanhasse, o cache nunca acertaria e a capa seria relida do disco
+        # 30x por segundo. Geramos uma vez e escalamos aqui.
+        side = int(c * 1.4)
+        label = self._cover_label(side)
+        if label:
+            cr.save()
+            cr.arc(cx, cy, core, 0, 2 * math.pi)
+            cr.clip()
+            k = (core * 2.0) / side
+            cr.translate(cx - core, cy - core)
+            cr.scale(k, k)
+            cr.set_source_surface(label, 0, 0)
+            cr.paint()
+            cr.restore()
+        else:
+            cr.set_source_rgba(r, g, b, 0.9)
+            cr.arc(cx, cy, core, 0, 2 * math.pi)
+            cr.fill()
+
+        cr.set_source_rgba(1, 1, 1, 0.16 + 0.5 * bass)
+        cr.set_line_width(2.0)
+        cr.arc(cx, cy, core + 3, 0, 2 * math.pi)
+        cr.stroke()
+
+    def _draw_wave(self, cr, w, h, lv):
+        """Onda radial: o raio de cada angulo segue uma banda do espectro."""
+        r, g, b = self.accent
+        cx, cy = w / 2.0, h / 2.0
+        c = min(w, h) / 2.0
+        base = c * 0.52
+        amp = c * 0.40
+        # media movel entre bandas vizinhas: a curva fica organica em vez de serrilhada
+        n = len(lv)
+        lv = [(lv[max(0, i - 1)] + 2.0 * lv[i] + lv[min(n - 1, i + 1)]) / 4.0
+              for i in range(n)]
+        pts = 144
+        rot = math.radians(self.angle)
+
+        def radius(j):
+            # espelha o espectro nos dois semicirculos para a curva fechar lisa
+            t = (j / pts) * 2.0
+            t = t if t <= 1.0 else 2.0 - t
+            f = t * (n - 1)
+            i = int(f)
+            frac = f - i
+            a = lv[i]
+            bnd = lv[min(n - 1, i + 1)]
+            frac = frac * frac * (3.0 - 2.0 * frac)      # smoothstep: tira os bicos
+            return base + amp * (a + (bnd - a) * frac)
+
+        cr.new_path()
+        for j in range(pts):
+            th = rot + 2.0 * math.pi * j / pts
+            rad = radius(j)
+            x, y = cx + rad * math.cos(th), cy + rad * math.sin(th)
+            cr.line_to(x, y) if j else cr.move_to(x, y)
+        cr.close_path()
+
+        fill = cairo.RadialGradient(cx, cy, base * 0.3, cx, cy, base + amp)
+        fill.add_color_stop_rgba(0.0, r, g, b, 0.30)
+        fill.add_color_stop_rgba(1.0, r, g, b, 0.05)
+        cr.set_source(fill)
+        cr.fill_preserve()
+        cr.set_source_rgba(min(1, r + 0.2), min(1, g + 0.2), min(1, b + 0.2), 0.95)
+        cr.set_line_width(2.0)
+        cr.stroke()
+
+        d = base * 1.05
+        label = self._cover_label(d)
+        if label:
+            cr.save()
+            cr.arc(cx, cy, d / 2.0, 0, 2 * math.pi)
+            cr.clip()
+            cr.set_source_surface(label, cx - d / 2.0, cy - d / 2.0)
+            cr.paint()
+            cr.restore()
+
+
+def _round_rect(cr, x, y, w, h, r):
+    r = min(r, w / 2.0, h / 2.0)
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+    cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+    cr.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
+    cr.close_path()
+
+
+class Blurred(Gtk.Widget):
+    """Capa esticada e borrada na GPU, usada como fundo do card."""
+    __gtype_name__ = "NowPlayingBlurred"
+
+    def __init__(self, radius=110.0, overscan=1.7):
+        super().__init__()
+        self.tex = None
+        self.radius = radius
+        self.overscan = overscan
+
+    def set_texture(self, tex):
+        self.tex = tex
+        self.queue_draw()
+
+    def do_measure(self, orientation, for_size):
+        return (0, 0, -1, -1)
+
+    def do_snapshot(self, snapshot):
+        w, h = self.get_width(), self.get_height()
+        if not self.tex or w <= 0 or h <= 0:
+            return
+        tw, th = self.tex.get_width(), self.tex.get_height()
+        if tw <= 0 or th <= 0:
+            return
+        snapshot.push_blur(self.radius)
+        # o blur desbota as bordas, entao desenhamos maior que o widget
+        k = max(w / tw, h / th) * self.overscan
+        dw, dh = tw * k, th * k
+        snapshot.append_texture(
+            self.tex, Graphene.Rect().init((w - dw) / 2, (h - dh) / 2, dw, dh))
+        snapshot.pop()
+
+
+CSS = """
+/* sem backdrop: a janela cobre a tela so para capturar o clique fora,
+   mas e totalmente transparente -- o unico corpo visivel e o card. */
+window.nowplaying { background: transparent; }
+
+.card {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.scrim {
+  background: linear-gradient(to bottom,
+              rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.52) 55%, rgba(0,0,0,0.72) 100%);
+  padding: 22px 22px 18px 22px;
+}
+.title {
+  font-family: "SF Pro Display", "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 16px; font-weight: 700; color: #ffffff;
+}
+.artist {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 12px; font-weight: 500; color: rgba(242, 242, 247, 0.82);
+}
+.album {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 11px; font-weight: 500; color: rgba(242, 242, 247, 0.50);
+}
+.time {
+  font-family: "JetBrainsMono Nerd Font", monospace;
+  font-size: 11px; color: rgba(242, 242, 247, 0.62);
+}
+progressbar trough {
+  min-height: 4px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+progressbar progress {
+  min-height: 4px; border-radius: 2px; background: #f2f2f7;
+}
+.ctl {
+  font-family: "JetBrainsMono Nerd Font";
+  color: #f2f2f7;
+  background: rgba(255, 255, 255, 0.10);
+  border: none; border-radius: 999px;
+  min-width: 34px; min-height: 34px;
+  transition: background-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ctl:hover  { background: rgba(255, 255, 255, 0.20); }
+.ctl.main   { min-width: 44px; min-height: 44px; }
+.ctl label  { font-size: 13px; }
+.ctl.main label { font-size: 17px; }
+.dot {
+  min-width: 5px; min-height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dot.on { background: rgba(255, 255, 255, 0.90); }
+.empty {
+  font-family: "SF Pro Text", "Inter", sans-serif;
+  font-size: 15px; color: rgba(242, 242, 247, 0.70);
+}
+"""
+
+
+# --------------------------------------------------------------------------- #
+# app
+# --------------------------------------------------------------------------- #
+class Modal:
+    def __init__(self, app):
+        self.app = app
+        self.trackid = None
+        self.art_src = None
+        self.hq_tried = set()
+        self.spectrum = AudioSpectrum()
+
+        self.win = Gtk.ApplicationWindow(application=app)
+        self.win.add_css_class("nowplaying")
+
+        LS.init_for_window(self.win)
+        LS.set_layer(self.win, LS.Layer.OVERLAY)
+        LS.set_keyboard_mode(self.win, LS.KeyboardMode.EXCLUSIVE)
+        LS.set_namespace(self.win, "music-modal")
+        for edge in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
+            LS.set_anchor(self.win, edge, True)
+
+        self.card = self._build_card()
+        # o root precisa cobrir a tela inteira, senao o gesture de clique so
+        # existe sobre o card e "clicar fora" nunca dispara. Quem centraliza
+        # e o card, via align + expand.
+        self.card.set_halign(Gtk.Align.CENTER)
+        self.card.set_valign(Gtk.Align.CENTER)
+        self.card.set_hexpand(True)
+        self.card.set_vexpand(True)
+        root = Gtk.Box()
+        root.append(self.card)
+        self.win.set_child(root)
+        self.root = root
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_key)
+        self.win.add_controller(keys)
+
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_click_outside)
+        root.add_controller(click)
+
+        self._update_dots()
+        self.stage.sync_audio()
+        self.win.present()
+        if DEBUG:
+            def dump():
+                ok, b = self.card.compute_bounds(self.root)
+                print(f"[layout] root={self.root.get_width()}x{self.root.get_height()} "
+                      f"card={b.size.width:.0f}x{b.size.height:.0f} em "
+                      f"({b.origin.x:.0f},{b.origin.y:.0f})", flush=True)
+                return GLib.SOURCE_REMOVE
+            GLib.timeout_add(800, dump)
+        self.refresh()
+        GLib.timeout_add(400, self.refresh)
+
+    def _build_card(self):
+        card = Gtk.Overlay()
+        card.add_css_class("card")
+        card.set_overflow(Gtk.Overflow.HIDDEN)
+        card.set_size_request(310, -1)
+
+        self.bg = Blurred()
+        card.set_child(self.bg)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.add_css_class("scrim")
+
+        self.stage = Stage(spectrum=self.spectrum)
+        self.stage.set_halign(Gtk.Align.CENTER)
+        tap = Gtk.GestureClick()
+        tap.connect("released", lambda *_: self._cycle_mode())
+        self.stage.add_controller(tap)
+        box.append(self.stage)
+
+        # indicadores do modo atual -- tambem sinalizam que o disco e clicavel
+        dots = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5,
+                       halign=Gtk.Align.CENTER)
+        dots.set_margin_top(12)
+        self._dots = []
+        for _ in MODES:
+            d = Gtk.Box()
+            d.add_css_class("dot")
+            dots.append(d)
+            self._dots.append(d)
+        box.append(dots)
+
+        self.l_title = Gtk.Label(label="", xalign=0.5)
+        self.l_title.add_css_class("title")
+        self.l_title.set_ellipsize(3)          # Pango.EllipsizeMode.END
+        self.l_title.set_max_width_chars(22)
+        self.l_title.set_margin_top(16)
+        box.append(self.l_title)
+
+        self.l_artist = Gtk.Label(label="", xalign=0.5)
+        self.l_artist.add_css_class("artist")
+        self.l_artist.set_ellipsize(3)
+        self.l_artist.set_max_width_chars(28)
+        self.l_artist.set_margin_top(4)
+        box.append(self.l_artist)
+
+        self.l_album = Gtk.Label(label="", xalign=0.5)
+        self.l_album.add_css_class("album")
+        self.l_album.set_ellipsize(3)
+        self.l_album.set_max_width_chars(30)
+        self.l_album.set_margin_top(3)
+        box.append(self.l_album)
+
+        prog = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        prog.set_margin_top(16)
+        self.l_pos = Gtk.Label(label="0:00")
+        self.l_pos.add_css_class("time")
+        self.bar = Gtk.ProgressBar(hexpand=True, valign=Gtk.Align.CENTER)
+        self.l_dur = Gtk.Label(label="0:00")
+        self.l_dur.add_css_class("time")
+        prog.append(self.l_pos)
+        prog.append(self.bar)
+        prog.append(self.l_dur)
+        box.append(prog)
+
+        ctl = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12,
+                      halign=Gtk.Align.CENTER)
+        ctl.set_margin_top(16)
+        self.b_prev = self._button("󰒮", "previous")
+        self.b_play = self._button("󰐊", "play-pause", main=True)
+        self.b_next = self._button("󰒭", "next")
+        for b in (self.b_prev, self.b_play, self.b_next):
+            ctl.append(b)
+        box.append(ctl)
+
+        card.add_overlay(box)
+        # sem isto o Overlay se dimensiona so pelo child principal (o fundo
+        # borrado, que mede 0) e o conteudo fica recortado a uma faixa fina.
+        card.set_measure_overlay(box, True)
+        return card
+
+    def _button(self, icon, action, main=False):
+        b = Gtk.Button(label=icon)
+        b.add_css_class("ctl")
+        if main:
+            b.add_css_class("main")
+        b.set_valign(Gtk.Align.CENTER)
+        b.connect("clicked", lambda *_: self._act(action))
+        return b
+
+    def _cycle_mode(self):
+        self.stage.cycle_mode()
+        self._update_dots()
+
+    def _update_dots(self):
+        active = MODES.index(self.stage.mode)
+        for i, d in enumerate(self._dots):
+            if i == active:
+                d.add_css_class("on")
+            else:
+                d.remove_css_class("on")
+
+    def _act(self, action):
+        playerctl(action)
+        GLib.timeout_add(120, self.refresh)
+
+    def _on_key(self, ctrl, keyval, keycode, state):
+        if keyval == Gdk.KEY_Escape or keyval == Gdk.KEY_q:
+            self.close()
+            return True
+        if keyval == Gdk.KEY_Tab or keyval == Gdk.KEY_v:
+            self._cycle_mode()
+            return True
+        if keyval == Gdk.KEY_space:
+            self._act("play-pause")
+            return True
+        if keyval == Gdk.KEY_Right:
+            self._act("next")
+            return True
+        if keyval == Gdk.KEY_Left:
+            self._act("previous")
+            return True
+        return False
+
+    def _on_click_outside(self, gesture, n_press, x, y):
+        ok, b = self.card.compute_bounds(self.root)
+        inside = ok and b.contains_point(Graphene.Point().init(x, y))
+        if DEBUG:
+            box = f"{b.origin.x:.0f},{b.origin.y:.0f} {b.size.width:.0f}x{b.size.height:.0f}" if ok else "?"
+            print(f"[click] ({x:.0f},{y:.0f}) card={box} root={self.root.get_width()}x"
+                  f"{self.root.get_height()} -> {'dentro' if inside else 'FECHA'}", flush=True)
+        if inside:
+            return
+        self.close()
+
+    def close(self):
+        self.spectrum.stop()
+        self.win.close()
+        self.app.quit()
+
+    # -- dados ------------------------------------------------------------- #
+    def refresh(self):
+        d = poll()
+        if d is None:
+            self.l_title.set_text("Nada tocando")
+            self.l_artist.set_text("")
+            self.l_album.set_text("")
+            self.stage.set_spinning(False)
+            self.bar.set_fraction(0)
+            return GLib.SOURCE_CONTINUE
+
+        self.l_title.set_text(d["title"])
+        self.l_artist.set_text(d["artist"])
+        self.l_album.set_text(d["album"])
+        self.stage.set_spinning(d["status"] == "Playing")
+        self.b_play.set_label("󰏤" if d["status"] == "Playing" else "󰐊")
+
+        if d["length"] > 0:
+            self.bar.set_fraction(min(1.0, d["position"] / d["length"]))
+            self.l_dur.set_text(mmss(d["length"]))
+        else:
+            self.bar.set_fraction(0)
+            self.l_dur.set_text("--:--")
+        self.l_pos.set_text(mmss(d["position"]))
+
+        if d["trackid"] != self.trackid:
+            self.trackid = d["trackid"]
+            self._load_art(d)
+
+        return GLib.SOURCE_CONTINUE
+
+    def _load_art(self, d):
+        path = art_path(d["art"])
+        if path:
+            self.stage.set_cover(path)
+            tex = load_texture(path)
+            if tex:
+                self.bg.set_texture(tex)
+
+        # a arte do MPRIS costuma ter 150px; busca uma melhor em segundo plano
+        key = (d["artist"], d["album"] or d["title"])
+        if key in self.hq_tried:
+            return
+        self.hq_tried.add(key)
+        want = self.trackid
+
+        def work():
+            path = hq_art(d["artist"], d["album"], d["title"])
+            if not path:
+                return
+            def apply():
+                if self.trackid != want:
+                    return GLib.SOURCE_REMOVE
+                self.stage.set_cover(path)
+                hq = load_texture(path)
+                if hq:
+                    self.bg.set_texture(hq)
+                return GLib.SOURCE_REMOVE
+            GLib.idle_add(apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+
+def already_running():
+    """Toggle: se ha uma instancia viva, encerra ela e nao abre outra."""
+    try:
+        pid = int(open(PIDFILE).read().strip())
+    except Exception:
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            cmd = fh.read().decode(errors="ignore")
+    except OSError:
+        return False
+    if SELF not in cmd:
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+    return True
+
+
+def main():
+    if already_running():
+        return 0
+
+    os.makedirs(os.path.dirname(PIDFILE), exist_ok=True)
+    with open(PIDFILE, "w") as fh:
+        fh.write(str(os.getpid()))
+
+    app = Gtk.Application(application_id="dev.sousa.NowPlaying",
+                          flags=0)
+
+    def on_activate(a):
+        provider = Gtk.CssProvider()
+        try:
+            provider.load_from_string(CSS)
+        except AttributeError:
+            provider.load_from_data(CSS.encode())
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Modal(a)
+
+    app.connect("activate", on_activate)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, lambda: (app.quit(), True)[1])
+
+    try:
+        return app.run([])
+    finally:
+        try:
+            if int(open(PIDFILE).read().strip()) == os.getpid():
+                os.unlink(PIDFILE)
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    sys.exit(main())

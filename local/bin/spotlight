@@ -1,0 +1,5 @@
+#!/bin/sh
+# Spotlight — barra de pesquisa de apps (estilo macOS). Toggle.
+pkill -x wofi 2>/dev/null && exit 0
+exec wofi --conf "$HOME/.config/wofi/config-spotlight" \
+          --style "$HOME/.config/wofi/style-spotlight.css"

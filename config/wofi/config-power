@@ -1,0 +1,15 @@
+show=dmenu
+mode=dmenu
+prompt=Energia
+insensitive=true
+allow_images=false
+columns=1
+lines=5
+width=250
+height=260
+location=top_left
+xoffset=8
+yoffset=34
+no_actions=true
+gtk_dark=true
+hide_scroll=true

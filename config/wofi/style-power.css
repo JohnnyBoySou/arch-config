@@ -1,0 +1,37 @@
+/* Menu  — estilo macOS */
+window {
+  background-color: rgba(40, 40, 44, 0.90);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 14px;
+  color: #f2f2f7;
+}
+
+#outer-box { margin: 6px; }
+
+#input {
+  margin: 0 0 4px 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.10);
+  color: #f2f2f7;
+  font-size: 13px;
+}
+#input:focus { outline: none; border: none; }
+#input image { color: rgba(242, 242, 247, 0.55); }
+
+#scroll { margin: 0; }
+#inner-box { background-color: transparent; }
+
+#entry {
+  padding: 8px 12px;
+  margin: 1px 0;
+  border-radius: 7px;
+  background-color: transparent;
+}
+#entry:selected { background-color: rgba(10, 132, 255, 0.9); }
+
+#text { color: #f2f2f7; }
+#text:selected { color: #ffffff; }

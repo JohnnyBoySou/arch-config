@@ -1,0 +1,33 @@
+/* Launchpad — estilo macOS */
+window {
+  background-color: rgba(28, 28, 30, 0.72);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 13px;
+  color: #f2f2f7;
+}
+#outer-box { margin: 28px; }
+#input {
+  margin: 0 22% 22px 22%;
+  padding: 11px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.10);
+  color: #f2f2f7;
+  font-size: 15px;
+}
+#input:focus { border: 1px solid rgba(10, 132, 255, 0.9); outline: none; }
+#input image { color: #f2f2f7; }
+#scroll { margin: 0; }
+#inner-box { background-color: transparent; }
+#entry {
+  padding: 16px 8px;
+  margin: 6px;
+  border-radius: 16px;
+  background-color: transparent;
+}
+#entry:selected { background-color: rgba(255, 255, 255, 0.16); }
+#text { color: #f2f2f7; margin-top: 8px; }
+#text:selected { color: #ffffff; }
+#img { margin-bottom: 2px; }

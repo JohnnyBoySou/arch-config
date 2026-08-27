@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+#  mac-setup — instala o pacote visual "estilo macOS" no Arch
+#  Uso:  ~/.local/bin/mac-setup
+#  Cada pacote é tentado isoladamente: se um falhar, o resto segue.
+# ─────────────────────────────────────────────────────────────
+set -uo pipefail
+
+BLUE=$'\e[1;34m'; GREEN=$'\e[1;32m'; YELL=$'\e[1;33m'; RED=$'\e[1;31m'; OFF=$'\e[0m'
+ok=(); fail=()
+
+say()  { printf '%s\n' "${BLUE}==>${OFF} $*"; }
+warn() { printf '%s\n' "${YELL}[!]${OFF} $*"; }
+
+install_one() {
+  local pkg="$1"
+  if pacman -Qq "$pkg" >/dev/null 2>&1; then
+    printf '    %s já instalado\n' "$pkg"; ok+=("$pkg"); return 0
+  fi
+  printf '    a instalar %s ...\n' "$pkg"
+  if yay -S --needed --noconfirm --answerdiff=None --answerclean=None "${YAYFLAGS[@]}" "$pkg" >/dev/null 2>&1; then
+    ok+=("$pkg")
+  else
+    warn "falhou: $pkg"; fail+=("$pkg")
+  fi
+}
+
+command -v yay >/dev/null || { echo "${RED}yay não encontrado.${OFF}"; exit 1; }
+
+# se houver um helper de password definido (SUDO_ASKPASS), usa-o; senão o sudo pergunta
+YAYFLAGS=(); [ -n "${SUDO_ASKPASS:-}" ] && YAYFLAGS=(--sudoflags "-A")
+
+say "A actualizar a base de dados de pacotes"
+yay -Sy --noconfirm "${YAYFLAGS[@]}" >/dev/null 2>&1
+
+# ── Essenciais em falta ──────────────────────────────────────
+say "Utilitários"
+for p in brightnessctl hyprpaper hyprpicker wl-clipboard polkit-kde-agent xdg-user-dirs; do
+  install_one "$p"
+done
+
+# ── Fontes (SF Pro / Inter) ──────────────────────────────────
+say "Fontes"
+for p in inter-font ttf-nerd-fonts-symbols ttf-nerd-fonts-symbols-mono noto-fonts-emoji; do
+  install_one "$p"
+done
+install_one otf-san-francisco   # AUR: SF Pro da Apple (opcional)
+
+# ── Tema, ícones e cursor macOS ──────────────────────────────
+say "Tema WhiteSur + ícones + cursor macOS"
+install_one whitesur-gtk-theme
+install_one whitesur-icon-theme
+install_one apple_cursor
+install_one papirus-icon-theme   # fallback de ícones para a dock
+
+# ── Ferramentas de aparência ─────────────────────────────────
+say "Ferramentas de aparência"
+for p in nwg-look qt6ct kvantum; do install_one "$p"; done
+install_one kvantum-theme-whitesur-git
+
+# ── Centro de notificações estilo macOS (opcional) ───────────
+say "Centro de notificações (swaync)"
+install_one swaync
+
+# ── Dock dedicada (opcional, alternativa à barra Waybar) ─────
+say "Dock alternativa (nwg-dock-hyprland)"
+install_one nwg-dock-hyprland
+
+# ── Pós-instalação ───────────────────────────────────────────
+say "A aplicar configurações"
+command -v xdg-user-dirs-update >/dev/null && xdg-user-dirs-update
+
+# cursor macOS — o pacote apple_cursor instala como "macOS" ou "macOS-Monterey"
+for c in macOS macOS-Monterey macOS-BigSur; do
+  if [ -d "/usr/share/icons/$c" ] || [ -d "$HOME/.icons/$c" ]; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$c" 2>/dev/null
+    hyprctl setcursor "$c" 24 2>/dev/null
+    sed -i "s/^gtk-cursor-theme-name=.*/gtk-cursor-theme-name=$c/" \
+        "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
+    sed -i "s/^env = XCURSOR_THEME,.*/env = XCURSOR_THEME,$c/;s/^env = HYPRCURSOR_THEME,.*/env = HYPRCURSOR_THEME,$c/" \
+        "$HOME/.config/hypr/hyprland.conf"
+    say "cursor: $c"
+    break
+  fi
+done
+
+# tema GTK — usa o nome exacto que ficou instalado
+for t in WhiteSur-Dark WhiteSur-dark WhiteSur-Dark-solid; do
+  if [ -d "/usr/share/themes/$t" ] || [ -d "$HOME/.themes/$t" ]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "$t" 2>/dev/null
+    sed -i "s/^gtk-theme-name=.*/gtk-theme-name=$t/" \
+        "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
+    sed -i "s/^env = GTK_THEME,.*/env = GTK_THEME,$t/" "$HOME/.config/hypr/hyprland.conf"
+    say "tema GTK: $t"
+    break
+  fi
+done
+
+# ícones
+for i in WhiteSur-dark WhiteSur Papirus-Dark; do
+  if [ -d "/usr/share/icons/$i" ] || [ -d "$HOME/.icons/$i" ]; then
+    gsettings set org.gnome.desktop.interface icon-theme "$i" 2>/dev/null
+    sed -i "s/^gtk-icon-theme-name=.*/gtk-icon-theme-name=$i/" \
+        "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
+    say "ícones: $i"
+    break
+  fi
+done
+
+# papel de parede
+if command -v hyprpaper >/dev/null && ! pgrep -x hyprpaper >/dev/null; then
+  hyprpaper >/dev/null 2>&1 &
+  say "hyprpaper iniciado"
+fi
+
+hyprctl reload >/dev/null 2>&1
+"$HOME/.local/bin/mac-reload" >/dev/null 2>&1
+
+echo
+printf '%s\n' "${GREEN}── Resumo ──${OFF}"
+printf '  instalados/já presentes: %s\n' "${#ok[@]}"
+if [ "${#fail[@]}" -gt 0 ]; then
+  printf '  %sfalharam:%s %s\n' "$YELL" "$OFF" "${fail[*]}"
+  printf '  (podes tentar manualmente: yay -S <pacote>)\n'
+fi
+echo
+echo "Pronto. Faz logout/login para o tema GTK e o cursor pegarem em tudo."

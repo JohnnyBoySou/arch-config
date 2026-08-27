@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Baixa wallpapers de anime do Wallhaven (SFW) para ~/Pictures/Wallpapers/anime.
+# Uso: wallpaper-fetch [quantidade] [query...]
+#   wallpaper-fetch                                -> 30 imagens das queries padrao
+#   wallpaper-fetch 15 "anime girl sword"
+#   WALLPAPER_PREFIX=cozy wallpaper-fetch 20 "anime scenery"   -> prefixo do arquivo
+set -euo pipefail
+
+DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
+LIMIT="${1:-30}"
+PREFIX="${WALLPAPER_PREFIX:-girl}"
+shift || true
+
+if [ "$#" -gt 0 ]; then
+    QUERIES=("$@")
+else
+    QUERIES=("anime girl" "anime girls" "original characters"
+             "anime girl city" "anime girl sky" "anime girl flowers")
+fi
+
+mkdir -p "$DIR"
+
+# IDs ja presentes (nome dos arquivos termina com o id do wallhaven).
+existing=$(find "$DIR" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null \
+    | sed -E 's/^.*-([a-z0-9]{6})\.[a-z]+$/\1/' | sort -u)
+
+# API sem key: apenas purity=100 (SFW). categories=010 = anime.
+urls=$(for q in "${QUERIES[@]}"; do
+    for sort in toplist favorites relevance; do
+        for page in 1 2; do
+            curl -sG "https://wallhaven.cc/api/v1/search" \
+                --data-urlencode "q=$q" \
+                -d categories=010 -d purity=100 \
+                -d "ratios=21x9,32x9,16x9,16x10" \
+                -d atleast=2560x1080 \
+                -d "sorting=$sort" -d "page=$page" \
+                | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit()
+for i in d.get("data",[]): print(i["id"], i["path"])'
+            sleep 1.5   # respeita o rate limit (45 req/min)
+        done
+    done
+done | sort -u -k1,1)
+
+echo "candidatos unicos: $(printf '%s\n' "$urls" | grep -c . || true)"
+
+n=0
+while read -r id url; do
+    [ -n "${id:-}" ] || continue
+    [ "$n" -ge "$LIMIT" ] && break
+    grep -qx "$id" <<<"$existing" && continue
+    ext="${url##*.}"
+    out="$DIR/$PREFIX-$id.$ext"
+    [ -e "$out" ] && continue
+    if curl -sfL --max-time 90 "$url" -o "$out"; then
+        # descarta download corrompido/vazio
+        if [ ! -s "$out" ] || ! file -b --mime-type "$out" | grep -q '^image/'; then
+            rm -f "$out"; continue
+        fi
+        n=$((n + 1))
+        echo "[$n/$LIMIT] $PREFIX-$id.$ext"
+    else
+        rm -f "$out"
+    fi
+done < <(printf '%s\n' "$urls" | shuf)
+
+echo "baixados: $n | total na pasta: $(find "$DIR" -maxdepth 1 -type f | wc -l)"

@@ -1,0 +1,99 @@
+[CompactMode]
+FontWeight=50
+IconSize=22
+MaximumTextWidthIndex=2
+PreviewSize=22
+UseSystemFont=true
+
+[DetailsMode]
+DirectorySizeMode=0
+ExpandableFolders=true
+FontWeight=50
+HighlightEntireRow=true
+IconSize=22
+PreviewSize=22
+SidePadding=12
+UseSystemFont=true
+
+[General]
+BrowseThroughArchives=true
+ConfirmClosingMultipleTabs=false
+ConfirmClosingTerminalRunningProgram=false
+EditableUrl=false
+FilterBar=false
+GlobalViewProps=true
+HomeUrl[$e]=$HOME
+OpenExternallyCalledFolderInNewTab=false
+RememberOpenedTabs=false
+ShowFullPath=false
+ShowFullPathInTitlebar=false
+ShowSelectionToggle=false
+ShowStatusBar=FullWidth
+ShowToolTips=false
+ShowZoomSlider=false
+SortingChoice=CaseInsensitiveSorting
+SplitView=false
+UseTabForSwitchingSplitView=true
+Version=202
+ViewPropsTimestamp=2020,1,1,0,0,0
+
+[IconsMode]
+FontWeight=50
+IconSize=64
+MaximumTextLines=2
+PreviewSize=64
+TextWidthIndex=1
+UseSystemFont=true
+
+[InformationPanel]
+dateFormat=0
+previewsShown=true
+
+[KFileDialog Settings]
+Places Icons Auto-resize=false
+Places Icons Static Size=22
+Show Bookmarks=false
+Show Full Path=false
+Show Inline Previews=true
+Show Preview=true
+Show Speedbar=true
+Show hidden files=false
+Sort by=Name
+Sort directories first=true
+Sort hidden files last=true
+View Style=DetailTree
+
+[MainWindow]
+MenuBar=Disabled
+
+[MainWindow][Toolbar mainToolBar]
+ToolButtonStyle=IconOnly
+
+[Notification Messages]
+ConfirmDelete=true
+ConfirmEmptyTrash=true
+ConfirmTrash=false
+
+[PlacesPanel]
+IconSize=22
+
+[PreviewSettings]
+MaximumRemoteSize=0
+Plugins=appimagethumbnail,audiothumbnail,blenderthumbnail,comicbookthumbnail,cursorthumbnail,directorythumbnail,djvuthumbnail,ebookthumbnail,exrthumbnail,ffmpegthumbs,gsthumbnail,imagethumbnail,jpegthumbnail,kraorathumbnail,mobithumbnail,opendocumentthumbnail,rawthumbnail,svgthumbnail,textthumbnail,windowsexethumbnail,windowsimagethumbnail
+
+[Search]
+Location=Everywhere
+
+[UiSettings]
+ColorScheme=macOSDark
+
+[Shortcuts]
+create_dir=Ctrl+Shift+N; F10
+properties=Ctrl+I; Alt+Return
+go_up=Ctrl+Up; Alt+Up
+go_back=Ctrl+[; Alt+Left; Back
+go_forward=Ctrl+]; Alt+Right; Forward
+show_hidden_files=Ctrl+Shift+.; Alt+.
+show_information_panel=Space; F11
+edit_find=Ctrl+F
+rename=F2

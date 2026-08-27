@@ -1,0 +1,6 @@
+#!/bin/sh
+# Abre o Lixo. Usa o gestor de ficheiros preferido.
+for fm in dolphin nautilus thunar nemo; do
+  command -v "$fm" >/dev/null 2>&1 && exec "$fm" trash:/
+done
+exec xdg-open trash:/

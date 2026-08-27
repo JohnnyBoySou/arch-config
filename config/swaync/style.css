@@ -1,0 +1,120 @@
+/* ─────────────────────────────────────────────────────────────
+   Central de notificações · estilo macOS
+   O "vidro" vem do blur do Hyprland (layerrule glass-notifications).
+   Regra de ouro: o alpha do fundo tem de ficar ACIMA do ignore_alpha
+   (0.5) e o da sombra ABAIXO — senão o blur come a sombra.
+   ───────────────────────────────────────────────────────────── */
+
+* {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 14px;
+}
+
+/* as janelas em si são transparentes: só os cartões têm fundo */
+.floating-notifications.background,
+.blank-window {
+  background: transparent;
+}
+
+.notification-row { outline: none; }
+
+.notification {
+  background: rgba(44, 44, 46, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  margin: 6px 10px;
+  padding: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  transition: background 220ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notification:hover {
+  background: rgba(58, 58, 60, 0.66);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* crítica: borda avermelhada discreta, sem gritar */
+.notification.critical {
+  border-color: rgba(255, 69, 58, 0.55);
+}
+
+.notification-content { padding: 12px; color: #f2f2f7; }
+.summary { font-weight: 700; color: #ffffff; }
+.body    { color: rgba(242, 242, 247, 0.82); }
+.time    { color: rgba(242, 242, 247, 0.5); font-size: 12px; }
+
+.close-button {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f2f2f7;
+  border-radius: 50%;
+  margin: 6px;
+  padding: 2px;
+  transition: background 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.close-button:hover { background: #ff453a; color: #ffffff; }
+
+.notification-action,
+.notification-default-action {
+  border-radius: 16px;
+  transition: background 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.notification-action:hover { background: rgba(255, 255, 255, 0.10); }
+
+/* ══════════════ central de notificações ══════════════ */
+
+.control-center {
+  background: rgba(30, 30, 32, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  color: #f2f2f7;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+}
+
+.control-center .notification {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+.control-center .notification:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.widget-title { color: #ffffff; font-size: 18px; font-weight: 700; margin: 14px 16px 6px 16px; }
+.widget-title > button {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f2f2f7;
+  border-radius: 10px;
+  padding: 4px 12px;
+  transition: background 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.widget-title > button:hover { background: rgba(255, 255, 255, 0.2); }
+
+.widget-dnd {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin: 8px 14px;
+  padding: 10px 14px;
+  color: #f2f2f7;
+}
+.widget-dnd > switch {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: background 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.widget-dnd > switch:checked { background: #30d158; }
+
+.widget-mpris, .widget-volume, .widget-backlight {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  margin: 8px 14px;
+  padding: 10px 14px;
+  color: #f2f2f7;
+}
+
+trough  { background: rgba(255, 255, 255, 0.18); border-radius: 8px; }
+highlight { background: #0a84ff; border-radius: 8px; }
+slider  { background: #ffffff; border-radius: 50%; }

@@ -1,0 +1,224 @@
+/* ─────────────────────────────────────────────────────────────
+   Waybar · tema macOS (menubar + dock)
+   Fontes: Inter / SF Pro (se instaladas) → fallback Noto Sans
+   ───────────────────────────────────────────────────────────── */
+
+* {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", "JetBrainsMono Nerd Font", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  /* nunca `all`: animar padding/margin/font-size causa reflow e treme.
+     So o que e puramente visual. */
+  transition: background-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              color            180ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color     180ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow       180ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity          180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+tooltip {
+  background: rgba(30, 30, 32, 0.92);
+  color: #f2f2f7;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+tooltip label { color: #f2f2f7; padding: 2px 4px; }
+
+/* ══════════════ MENU BAR (topo) ══════════════ */
+
+/* A barra em si nao desenha nada: os tres grupos viram ilhas separadas.
+   O blur da layer (ignore_alpha 0.1) so pega onde ha fundo, entao o vao
+   entre as ilhas fica realmente vazado. */
+window#waybar.menubar {
+  background: transparent;
+  color: #f2f2f7;
+  /* o tema GTK (WhiteSur-Dark) desenha uma linha de 1px na base da janela;
+     o `*` la em cima zera border mas nao box-shadow */
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+window#waybar.menubar .modules-left,
+window#waybar.menubar .modules-center,
+window#waybar.menubar .modules-right {
+  background: rgba(28, 28, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  padding: 0 4px;
+  margin: 3px 0;
+}
+
+/* cantos internos: sem isso o :hover do primeiro/ultimo modulo
+   vaza por cima do arredondado da ilha */
+window#waybar.menubar .modules-left > widget:first-child > *,
+window#waybar.menubar .modules-right > widget:first-child > * {
+  border-radius: 10px 0 0 10px;
+}
+window#waybar.menubar .modules-left > widget:last-child > *,
+window#waybar.menubar .modules-right > widget:last-child > * {
+  border-radius: 0 10px 10px 0;
+}
+
+/* Ilha dos workspaces: pilula. A ilha tem 32px de altura (38 da barra
+   menos os 3px de margem em cima e embaixo), entao um raio generoso
+   arredonda por completo. */
+window#waybar.menubar .modules-center {
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+#custom-apple {
+  font-family: "JetBrainsMono Nerd Font";
+  font-size: 15px;
+  color: #f2f2f7;
+  padding: 0 12px 0 14px;
+}
+#custom-apple:hover { background: rgba(255, 255, 255, 0.14); }
+
+window#waybar.menubar #window {
+  font-weight: 700;
+  color: #f2f2f7;
+  padding: 0 10px;
+}
+window#waybar.menubar.empty #window { color: rgba(242, 242, 247, 0.55); }
+
+window#waybar.menubar #workspaces { background: transparent; }
+window#waybar.menubar #workspaces button {
+  color: rgba(242, 242, 247, 0.45);
+  background: transparent;
+  padding: 0 9px;
+  margin: 5px 2px;
+  min-width: 20px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  /* largura fixa de proposito: animar min-width reposiciona o label no meio
+     da transicao e o numero pisca. So o que e pintura entra na animacao. */
+  transition: background-color 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow       260ms cubic-bezier(0.22, 1, 0.36, 1),
+              color               1ms linear 40ms;
+}
+window#waybar.menubar #workspaces button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #f2f2f7;
+}
+window#waybar.menubar #workspaces button.active {
+  background: #ffffff;
+  color: #1c1c1e;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.38);
+}
+window#waybar.menubar #workspaces button.active:hover {
+  background: #ffffff;
+}
+window#waybar.menubar #workspaces button.urgent {
+  background: #ff453a;
+  color: #ffffff;
+}
+
+window#waybar.menubar #custom-controlcenter,
+window#waybar.menubar #mpris,
+window#waybar.menubar #privacy,
+window#waybar.menubar #idle_inhibitor,
+window#waybar.menubar #custom-kbd-battery,
+window#waybar.menubar #cpu,
+window#waybar.menubar #memory,
+window#waybar.menubar #network,
+window#waybar.menubar #pulseaudio,
+window#waybar.menubar #custom-power,
+window#waybar.menubar #custom-notification,
+window#waybar.menubar #tray {
+  font-family: "JetBrainsMono Nerd Font";
+  color: rgba(242, 242, 247, 0.92);
+  padding: 0 8px;
+  margin: 4px 1px;
+  border-radius: 6px;
+  background: transparent;
+}
+
+window#waybar.menubar #custom-controlcenter:hover,
+window#waybar.menubar #mpris:hover,
+window#waybar.menubar #idle_inhibitor:hover,
+window#waybar.menubar #custom-kbd-battery:hover,
+window#waybar.menubar #cpu:hover,
+window#waybar.menubar #memory:hover,
+window#waybar.menubar #network:hover,
+window#waybar.menubar #pulseaudio:hover,
+window#waybar.menubar #custom-notification:hover,
+window#waybar.menubar #custom-power:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+window#waybar.menubar #network.disconnected,
+window#waybar.menubar #pulseaudio.muted { color: #ff453a; }
+
+window#waybar.menubar #clock,
+window#waybar.menubar #custom-clock {
+  color: #f2f2f7;
+  font-weight: 500;
+  padding: 0 14px 0 8px;
+  margin: 4px 0;
+  border-radius: 6px;
+}
+window#waybar.menubar #clock:hover,
+window#waybar.menubar #custom-clock:hover { background: rgba(255, 255, 255, 0.14); }
+
+window#waybar.menubar #tray menu {
+  background: rgba(30, 30, 32, 0.96);
+  color: #f2f2f7;
+  border-radius: 10px;
+}
+
+/* A dock agora é o nwg-dock-hyprland — estilo em ~/.config/nwg-dock-hyprland/style.css */
+
+/* botão da central de notificações */
+window#waybar.menubar #custom-notification.notification,
+window#waybar.menubar #custom-notification.dnd-notification { color: #0a84ff; }
+window#waybar.menubar #custom-notification.dnd-none { color: rgba(242, 242, 247, 0.45); }
+
+/* ══════════════ módulos novos ══════════════ */
+
+/* Now Playing — usa a fonte de texto, não a de ícones */
+window#waybar.menubar #mpris {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 12px;
+  color: rgba(242, 242, 247, 0.85);
+  padding: 0 10px;
+}
+window#waybar.menubar #mpris.paused { color: rgba(242, 242, 247, 0.5); }
+window#waybar.menubar #mpris.stopped { opacity: 0; padding: 0; margin: 0; }
+
+/* Privacidade — ponto laranja (mic) / vermelho (tela), como no macOS */
+window#waybar.menubar #privacy { padding: 0 6px; }
+window#waybar.menubar #privacy-item { padding: 0 3px; color: #f2f2f7; }
+window#waybar.menubar #privacy-item.audio-in { color: #ff9f0a; }
+window#waybar.menubar #privacy-item.screenshare { color: #ff453a; }
+
+/* Impedir suspensão — azul quando ativo */
+window#waybar.menubar #idle_inhibitor.activated {
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.16);
+}
+window#waybar.menubar #idle_inhibitor.deactivated { color: rgba(242, 242, 247, 0.45); }
+
+/* Bateria do teclado/mouse sem fio — só visível em Low/Critical */
+window#waybar.menubar #custom-kbd-battery.ok { opacity: 0; padding: 0; margin: 0; }
+window#waybar.menubar #custom-kbd-battery.warning { color: #ff9f0a; }
+window#waybar.menubar #custom-kbd-battery.critical {
+  color: #ff453a;
+  background: rgba(255, 69, 58, 0.16);
+}
+
+/* indicador de gravação de ecrã */
+#custom-recorder.recording {
+    color: #ff453a;
+    font-weight: 600;
+    padding: 0 8px;
+}
+#custom-recorder.idle {
+    padding: 0;
+    margin: 0;
+}

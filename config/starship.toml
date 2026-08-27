@@ -1,0 +1,233 @@
+add_newline = true
+scan_timeout = 250
+command_timeout = 2000
+
+format = """
+[](bold blue)\
+$os\
+$username\
+$hostname\
+${custom.gradient_pwd}\
+$git_branch\
+$git_status\
+$git_state\
+$package\
+$nodejs\
+$bun\
+$rust\
+$golang\
+$python\
+$docker_context\
+$direnv\
+$jobs\
+$status\
+$shlvl
+$character"""
+
+right_format = "$cmd_duration$battery$time"
+
+# ========================
+# OS / USER / HOST
+# ========================
+
+[os]
+disabled = false
+format = "[$symbol]($style) "
+style = "bold white"
+
+[os.symbols]
+Ubuntu = ""
+Debian = ""
+Arch = "󰣇"
+Linux = ""
+Macos = ""
+Windows = ""
+
+[username]
+show_always = false
+style_user = "bold yellow"
+style_root = "bold red"
+format = "[$user]($style)@"
+
+[hostname]
+ssh_only = true
+format = "[$hostname]($style) "
+style = "bold green"
+
+# ========================
+# DIRECTORY
+# ========================
+
+[directory]
+disabled = true
+style = "bold blue"
+truncation_length = 4
+truncate_to_repo = true
+read_only = " 󰌾"
+read_only_style = "red"
+home_symbol = " ~"
+format = "[$path]($style)[$read_only]($read_only_style) "
+
+[custom.gradient_pwd]
+command = 'fish --no-config "$HOME/.config/fish/scripts/gradient_pwd.fish"'
+when = true
+shell = ['sh']
+format = '$output'
+style = ''
+unsafe_no_escape = true
+description = 'Caminho atual em degradê Powerline'
+
+# ========================
+# GIT
+# ========================
+
+[git_branch]
+symbol = ""
+style = "bold fg:#f8f8f2 bg:#53618c"
+format = "[](fg:#53618c)[ $symbol $branch ]($style)[](fg:#53618c) "
+truncation_length = 24
+truncation_symbol = "…"
+
+[git_status]
+style = "bold fg:#f8f8f2 bg:#7c83c6"
+format = '([](fg:#7c83c6)[ $all_status$ahead_behind ]($style)[](fg:#7c83c6) )'
+conflicted = "="
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+up_to_date = ""
+untracked = "?${count}"
+stashed = "\\$${count}"
+modified = "!${count}"
+staged = "+${count}"
+renamed = "»${count}"
+deleted = "✘${count}"
+
+[git_state]
+style = "bold yellow"
+format = '\([$state( $progress_current/$progress_total)]($style)\) '
+
+# ========================
+# PACKAGE VERSION
+# ========================
+
+[package]
+symbol = "󰏗 "
+style = "bold fg:#11111b bg:#f9e2af"
+format = "[](fg:#f9e2af)[ $symbol$version ]($style)[](fg:#f9e2af) "
+display_private = false
+
+# ========================
+# LANGUAGES
+# ========================
+
+[nodejs]
+symbol = "󰎙"
+style = "bold fg:#11111b bg:#a6e3a1"
+format = "[](fg:#a6e3a1)[ $symbol $version ]($style)[](fg:#a6e3a1) "
+
+[bun]
+symbol = ""
+style = "bold fg:#11111b bg:#f5c2e7"
+format = "[](fg:#f5c2e7)[ $symbol $version ]($style)[](fg:#f5c2e7) "
+
+[rust]
+symbol = ""
+style = "bold fg:#11111b bg:#fab387"
+format = "[](fg:#fab387)[ $symbol $version ]($style)[](fg:#fab387) "
+
+[golang]
+symbol = ""
+style = "bold fg:#11111b bg:#89dceb"
+format = "[](fg:#89dceb)[ $symbol $version ]($style)[](fg:#89dceb) "
+detect_files = ["go.mod", "go.sum", "go.work"]
+
+[python]
+symbol = ""
+style = "bold fg:#11111b bg:#f9e2af"
+format = '[](fg:#f9e2af)[ $symbol ${pyenv_prefix}${version}( \($virtualenv\)) ]($style)[](fg:#f9e2af) '
+
+# ========================
+# DOCKER / DIRENV
+# ========================
+
+[docker_context]
+symbol = ""
+style = "bold fg:#11111b bg:#89b4fa"
+format = "[](fg:#89b4fa)[ $symbol $context ]($style)[](fg:#89b4fa) "
+only_with_files = true
+
+[direnv]
+disabled = false
+symbol = " "
+style = "bold cyan"
+format = "[$symbol$loaded/$allowed]($style) "
+
+# ========================
+# STATUS / JOBS / SHLVL
+# ========================
+
+[status]
+disabled = false
+symbol = "✘"
+success_symbol = ""
+format = "[$symbol $common_meaning$signal_name$maybe_int]($style) "
+style = "bold red"
+map_symbol = true
+pipestatus = true
+
+[jobs]
+symbol = "✦"
+style = "bold cyan"
+number_threshold = 1
+format = "[$symbol $number]($style) "
+
+[shlvl]
+disabled = false
+threshold = 2
+symbol = "↕"
+style = "bold yellow"
+format = "[$symbol $shlvl]($style) "
+
+# ========================
+# RIGHT SIDE: DURATION / BATTERY / TIME
+# ========================
+
+[cmd_duration]
+min_time = 500
+format = "[](fg:#3b4261)[ 󱎫 $duration ](bold fg:#f9e2af bg:#3b4261)[](fg:#3b4261) "
+show_milliseconds = false
+
+[battery]
+full_symbol = "󰂅"
+charging_symbol = "󰂄"
+discharging_symbol = "󰁹"
+unknown_symbol = "󰂑"
+empty_symbol = "󰂃"
+format = "[](fg:#465072)[ $symbol $percentage ]($style bg:#465072)[](fg:#465072) "
+
+[[battery.display]]
+threshold = 20
+style = "bold red"
+
+[[battery.display]]
+threshold = 50
+style = "bold yellow"
+
+[[battery.display]]
+threshold = 100
+style = "bold green"
+
+[time]
+disabled = false
+time_format = "%H:%M"
+format = "[](fg:#53618c)[ 󰥔 $time ](bold fg:#f8f8f2 bg:#53618c)[](fg:#53618c)"
+
+# ========================
+# PROMPT CHARACTER
+# ========================
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold green)"

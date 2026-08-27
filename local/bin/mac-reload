@@ -1,0 +1,9 @@
+#!/bin/sh
+# Recarrega o Hyprland, a menubar (Waybar) e a dock (nwg-dock-hyprland).
+pkill -x waybar 2>/dev/null
+pkill -x nwg-dock-hyprla 2>/dev/null
+sleep 0.5
+LC_TIME=pt_BR.utf8 waybar >/dev/null 2>&1 &
+nwg-dock-hyprland -p bottom -i 44 -x -mb 6 -c "$HOME/.local/bin/app-launcher" -lp start -ico /usr/share/icons/WhiteSur-dark/apps/scalable/view-app-grid.svg -r >/dev/null 2>&1 &
+hyprctl reload >/dev/null 2>&1
+echo "Recarregado."

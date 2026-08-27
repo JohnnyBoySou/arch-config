@@ -1,0 +1,28 @@
+/* Spotlight — estilo macOS */
+window {
+  background-color: rgba(40, 40, 44, 0.86);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 14px;
+  color: #f2f2f7;
+}
+#outer-box { margin: 0; }
+#input {
+  margin: 0;
+  padding: 16px 20px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px 16px 0 0;
+  background-color: transparent;
+  color: #f2f2f7;
+  font-size: 20px;
+}
+#input:focus { outline: none; border-bottom: 1px solid rgba(255,255,255,0.12); }
+#input image { color: rgba(242, 242, 247, 0.6); }
+#scroll { margin: 8px 8px 12px 8px; }
+#inner-box { background-color: transparent; }
+#entry { padding: 8px 12px; margin: 1px 0; border-radius: 8px; }
+#entry:selected { background-color: rgba(10, 132, 255, 0.85); }
+#text { color: #f2f2f7; margin-left: 10px; }
+#text:selected { color: #ffffff; }

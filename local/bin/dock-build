@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Compila a dock com os itens extras (Minimizar / Focar só esta) e
+# instala em ~/.local/bin — sem tocar no pacote do sistema.
+set -euo pipefail
+
+SRC="$HOME/.local/src/nwg-dock-hyprland"
+[ -d "$SRC" ] || { echo "Fonte não encontrado em $SRC"; exit 1; }
+
+if ! pacman -Qq gobject-introspection >/dev/null 2>&1; then
+  echo "Falta a dependência de compilação. Rode:"
+  echo "    sudo pacman -S --needed gobject-introspection"
+  exit 1
+fi
+
+cd "$SRC"
+export GOFLAGS=-mod=mod
+echo "==> compilando (a primeira vez baixa as dependências, leva um pouco)"
+go build -o "$HOME/.local/bin/nwg-dock-hyprland" .
+
+echo "==> reiniciando a dock"
+pkill -x nwg-dock-hyprla 2>/dev/null || true
+sleep 1
+"$HOME/.local/bin/mac-reload"
+echo "Pronto. Clique com o botão direito num app da dock para ver os itens novos."

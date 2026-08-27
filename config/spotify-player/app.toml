@@ -1,0 +1,36 @@
+# spotify-player — config para Ghostty + PipeWire
+
+theme = "default"
+
+# Notificações via libnotify (integra com o mako/dunst do Hyprland)
+enable_notify = true
+notify_timeout_in_secs = 5
+
+# Controle por MPRIS: deixa o playerctl e a Waybar enxergarem o player
+enable_media_control = true
+
+# Streaming local sempre ligado (requer Premium)
+enable_streaming = "Always"
+
+# Capa de álbum — Ghostty fala o protocolo Kitty, então renderiza de verdade
+enable_cover_image_cache = true
+cover_img_length = 9
+cover_img_width = 5
+
+# Visual
+border_type = "Rounded"
+progress_bar_type = "Rectangle"
+playback_window_position = "Top"
+cover_img_scale = 1.0
+
+# Layout do player
+playback_window_width = 6
+default_device = "spotify-player"
+
+[device]
+name = "spotify-player"
+device_type = "computer"
+volume = 70
+bitrate = 320
+audio_cache = true
+normalization = false

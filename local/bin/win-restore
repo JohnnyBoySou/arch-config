@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Disparado a cada clique (bindn, non-consuming). So age quando o clique
+# acontece DENTRO da gaveta, em cima de uma janela guardada.
+STATE="$HOME/.cache/hypr-minimized.json"
+
+[ -s "$STATE" ] || exit 0
+grep -q '0x' "$STATE" || exit 0
+
+ws_id() { hyprctl activeworkspace -j 2>/dev/null | grep -oP '"id":\s*\K-?[0-9]+' | head -1; }
+
+# lido no instante do clique, antes do Hyprland processa-lo
+ANTES=$(ws_id)
+[ "$ANTES" = "5" ] || exit 0
+
+# deixa o clique mudar o foco
+sleep 0.15
+[ "$(ws_id)" = "5" ] || exit 0
+
+exec python3 - <<'PY'
+import json, os, subprocess
+
+STATE = os.path.expanduser("~/.cache/hypr-minimized.json")
+
+def hypr(*a):
+    return subprocess.run(["hyprctl", *a], capture_output=True, text=True).stdout
+
+try:
+    with open(STATE) as f:
+        state = json.load(f)
+except Exception:
+    raise SystemExit
+
+win = json.loads(hypr("activewindow", "-j") or "{}")
+addr = win.get("address")
+if not addr or addr not in state:
+    raise SystemExit
+
+# o clique precisa ter caido em cima da janela, nao no vazio
+try:
+    cx, cy = (int(n) for n in hypr("cursorpos").strip().split(","))
+    wx, wy = win["at"]
+    ww, wh = win["size"]
+    if not (wx <= cx <= wx + ww and wy <= cy <= wy + wh):
+        raise SystemExit
+except (ValueError, KeyError):
+    pass
+
+destino = state.pop(addr)
+
+vivos = {c["address"] for c in json.loads(hypr("clients", "-j") or "[]")}
+state = {k: v for k, v in state.items() if k in vivos}
+
+tmp = STATE + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(state, f)
+os.replace(tmp, STATE)
+
+hypr("dispatch", "movetoworkspace", f"{destino},address:{addr}")
+PY

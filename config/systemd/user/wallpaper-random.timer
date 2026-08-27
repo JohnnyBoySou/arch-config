@@ -1,0 +1,10 @@
+[Unit]
+Description=Troca o wallpaper a cada 15 minutos
+
+[Timer]
+OnStartupSec=1min
+OnUnitActiveSec=15min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

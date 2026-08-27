@@ -1,0 +1,201 @@
+// ─────────────────────────────────────────────────────────────
+//  Waybar · MENU BAR (topo) — estilo macOS
+//  Dock (em baixo) é o nwg-dock-hyprland
+// ─────────────────────────────────────────────────────────────
+{
+  "name": "menubar",
+  "layer": "top",
+  "position": "top",
+  "height": 38,
+  "spacing": 2,
+  "margin-top": 6,
+  "margin-left": 10,
+  "margin-right": 10,
+  "exclusive": true,
+
+  "modules-left":   ["custom/apple", "hyprland/window"],
+  "modules-center": ["hyprland/workspaces"],
+  "modules-right":  [
+    "custom/recorder",
+    "privacy",
+    "mpris",
+    "tray",
+    "custom/kbd-battery",
+    "idle_inhibitor",
+    "cpu",
+    "memory",
+    "network",
+    "pulseaudio",
+    "custom/controlcenter",
+    "custom/power",
+    "custom/clock",
+    "custom/notification"
+  ],
+
+  "custom/apple": {
+    "format": "",
+    "tooltip": false,
+    "on-click": "/home/sousa/.local/bin/power-menu"
+  },
+
+  "hyprland/window": {
+    "format": "{class}",
+    "separate-outputs": true,
+    "max-length": 40,
+    "rewrite": {
+      "": "Área de Trabalho",
+      "google-chrome": "Google Chrome",
+      "Google-chrome": "Google Chrome",
+      "brave-browser": "Brave",
+      "chromium": "Chromium",
+      "firefox": "Firefox",
+      "com.mitchellh.ghostty": "Ghostty",
+      "ghostty": "Ghostty",
+      "kitty": "Kitty",
+      "org.kde.dolphin": "Arquivos",
+      "dolphin": "Arquivos",
+      "code": "VS Code",
+      "Code": "VS Code",
+      "org.pulseaudio.pavucontrol": "Som",
+      "pavucontrol": "Som",
+      "nwg-look": "Aparência",
+      "qt6ct": "Qt6 Settings"
+    }
+  },
+
+  "hyprland/workspaces": {
+    "format": "{id}",
+    "on-click": "activate",
+    "sort-by-number": true,
+    "persistent-workspaces": { "*": 5 }
+  },
+
+  // ── Indicador de privacidade (mic / câmera / compartilhamento de tela)
+  //    Só aparece quando algum app está realmente usando o recurso.
+  "privacy": {
+    "icon-spacing": 4,
+    "icon-size": 13,
+    "transition-duration": 250,
+    "modules": [
+      { "type": "screenshare", "tooltip": true, "tooltip-icon-size": 22 },
+      { "type": "audio-in",    "tooltip": true, "tooltip-icon-size": 22 }
+    ]
+  },
+
+  // ── Now Playing (Spotify, browser, qualquer player MPRIS)
+  "mpris": {
+    "format": "{player_icon}  {dynamic}",
+    "format-paused": "{status_icon}  <i>{dynamic}</i>",
+    "dynamic-order": ["title", "artist"],
+    "dynamic-len": 32,
+    "title-len": 32,
+    "artist-len": 20,
+    "interval": 2,
+    "player-icons": {
+      "default": "󰎇",
+      "spotify": "",
+      "spotify_player": "",
+      "chromium": "",
+      "chrome": "",
+      "brave": "󰖟",
+      "firefox": "",
+      "vlc": "󰕼",
+      "mpv": ""
+    },
+    "status-icons": { "paused": "󰏤", "playing": "󰐊" },
+    "ignored-players": [],
+    "on-click": "~/.local/bin/music-modal",
+    "on-click-middle": "previous",
+    "on-click-right": "next",
+    "on-scroll-up": "next",
+    "on-scroll-down": "previous",
+    "tooltip-format": "{player} · {status}\n{title}\n{artist}\n{album}"
+  },
+
+  // ── Impedir suspensão / bloqueio de tela (tipo Amphetamine)
+  "idle_inhibitor": {
+    "format": "{icon}",
+    "format-icons": { "activated": "󰅶", "deactivated": "󰛊" },
+    "tooltip-format-activated": "Suspensão bloqueada — a tela não vai apagar",
+    "tooltip-format-deactivated": "Suspensão automática ativa (clique para bloquear)"
+  },
+
+  // ── Bateria do teclado sem fio (só aparece em Low/Critical)
+  "custom/recorder": {
+    "exec": "/home/sousa/.local/bin/rec-status",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "/home/sousa/.local/bin/screenrecord full"
+  },
+
+  "custom/kbd-battery": {
+    "exec": "/home/sousa/.local/bin/kbd-battery",
+    "return-type": "json",
+    "interval": 300,
+    "on-click": "/home/sousa/.local/bin/kbd-battery --notify"
+  },
+
+  "tray": { "icon-size": 15, "spacing": 10 },
+
+  "cpu":    { "format": "󰘚 {usage}%", "interval": 3, "tooltip": false },
+  "memory": { "format": "󰍛 {percentage}%", "interval": 5, "tooltip-format": "{used:0.1f}G / {total:0.1f}G" },
+
+  "network": {
+    "format-wifi": "󰤨",
+    "format-ethernet": "󰈀",
+    "format-disconnected": "󰤭",
+    "tooltip-format": "{ifname} · {ipaddr}",
+    "tooltip-format-wifi": "{essid} · {signalStrength}%"
+  },
+
+  "pulseaudio": {
+    "format": "{icon}",
+    "format-muted": "󰝟",
+    "format-icons": { "default": ["󰕿", "󰖀", "󰕾"] },
+    "on-click": "pavucontrol",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "scroll-step": 5,
+    "tooltip-format": "{volume}%"
+  },
+
+  // ── Centro de Controle (Quickshell)
+  "custom/controlcenter": {
+    "format": "",
+    "tooltip": true,
+    "tooltip-format": "Centro de Controle  ·  Super+Shift+C",
+    "on-click": "qs -c controlcenter ipc call cc toggle"
+  },
+
+  "custom/power": {
+    "format": "󰐥",
+    "tooltip": false,
+    "on-click": "/home/sousa/.local/bin/power-menu"
+  },
+
+  "custom/notification": {
+    "format": "{icon}",
+    "format-icons": {
+      "notification": "",
+      "none": "",
+      "dnd-notification": "",
+      "dnd-none": "",
+      "inhibited-notification": "",
+      "inhibited-none": "",
+      "dnd-inhibited-notification": "",
+      "dnd-inhibited-none": ""
+    },
+    "return-type": "json",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw",
+    "escape": true,
+    "tooltip": false
+  },
+
+  "custom/clock": {
+    "exec": "/home/sousa/.local/bin/mac-clock",
+    "return-type": "json",
+    "interval": 20,
+    "on-click": "gsimplecal || true"
+  }
+}

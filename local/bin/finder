@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Finder — abre o Dolphin como o Finder do macOS: uma janela só, focada.
+# Uso: finder [caminho]
+set -u
+target="${1:-}"
+
+addr=$(hyprctl clients -j 2>/dev/null | python3 -c '
+import sys, json
+try:
+    for c in json.load(sys.stdin):
+        if c.get("class") == "org.kde.dolphin":
+            print(c["address"]); break
+except Exception:
+    pass
+')
+
+if [ -n "$addr" ] && [ -z "$target" ]; then
+    # já existe uma janela: traz para o workspace atual e foca
+    hyprctl dispatch focuswindow "address:$addr" >/dev/null
+else
+    exec dolphin "${target:-$HOME}"
+fi

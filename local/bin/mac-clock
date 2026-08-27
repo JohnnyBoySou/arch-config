@@ -1,0 +1,20 @@
+#!/bin/sh
+# Relógio da menubar em português (Waybar ignora a opção "locale" nesta versão,
+# e o módulo clock nativo renderiza o dia da semana em minúscula em pt_BR).
+export LC_TIME=pt_BR.utf8
+
+text=$(date '+%a %d %b  %H:%M')
+# primeira letra do dia da semana em maiúscula, como no macOS
+text=$(printf '%s' "$text" | sed 's/^\(.\)/\U\1/')
+
+hoje=$(date '+%-d')
+
+cal_out=$(cal \
+  | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
+  | sed "s/\\b${hoje}\\b/<b><u>${hoje}<\/u><\/b>/" \
+  | sed ':a;N;$!ba;s/\n/\\n/g')
+
+full=$(date '+%A, %d de %B de %Y')
+full=$(printf '%s' "$full" | sed 's/^\(.\)/\U\1/')
+
+printf '{"text":"%s","tooltip":"<b>%s</b>\\n\\n<tt>%s</tt>"}\n' "$text" "$full" "$cal_out"

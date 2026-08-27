@@ -1,0 +1,26 @@
+#!/bin/sh
+# Launchpad (nwg-drawer). Toggle: abre se fechado, fecha se aberto.
+# O toggle é de propósito — se abrir sozinho depois de um atalho
+# SUPER+algo, basta apertar SUPER de novo para dispensar.
+#
+# Usado tanto pelo bind do SUPER quanto pelo botão de grid do nwg-dock.
+
+DRAWER_ARGS="-c 8 -is 72 -spacing 28 -wm hyprland -term ghostty -fm dolphin -closebtn none -k -ml 480 -mr 480 -mt 90 -mb 90"
+
+# Sem instância residente (ex.: crashou): sobe uma e abre.
+if ! pgrep -x nwg-drawer >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    nwg-drawer -r $DRAWER_ARGS >/dev/null 2>&1 &
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -x nwg-drawer >/dev/null 2>&1 && break
+        sleep 0.1
+    done
+    exec nwg-drawer -open
+fi
+
+# A layer só existe enquanto a janela está visível.
+if hyprctl layers 2>/dev/null | grep -q "namespace: nwg-drawer"; then
+    exec nwg-drawer -close
+else
+    exec nwg-drawer -open
+fi

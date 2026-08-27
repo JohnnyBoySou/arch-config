@@ -1,0 +1,15 @@
+[server]
+style = "/home/sousa/.config/swayosd/style.css"
+
+# altura na tela: 0.85 = perto do rodapé, acima do dock
+top_margin = 0.85
+
+# teto de 100%, alinhado com o -l 1 que os binds usavam
+max_volume = 100
+
+# pill limpo, só ícone e barra
+show_percentage = false
+
+duration = 1000
+
+[client]

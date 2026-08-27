@@ -1,0 +1,17 @@
+show=drun
+mode=drun
+prompt=Spotlight
+insensitive=true
+allow_images=true
+image_size=26
+columns=1
+lines=8
+width=620
+height=430
+location=top
+yoffset=140
+no_actions=true
+gtk_dark=true
+term=ghostty
+matching=fuzzy
+hide_scroll=true

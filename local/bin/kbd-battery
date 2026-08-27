@@ -1,0 +1,62 @@
+#!/bin/sh
+# Bateria de periféricos sem fio (Logitech/hidpp).
+# Estes dispositivos só reportam capacity_level (Full/Normal/Low/Critical),
+# nunca percentual — então o módulo só aparece quando o nível baixa.
+# Uso: kbd-battery            → JSON para a Waybar
+#      kbd-battery --notify   → notificação com o estado de todos os dispositivos
+
+notify=0
+[ "$1" = "--notify" ] && notify=1
+
+worst=""
+worst_rank=0
+lines=""
+
+rank() {
+  case "$1" in
+    Critical) echo 3 ;;
+    Low)      echo 2 ;;
+    Normal)   echo 1 ;;
+    Full)     echo 1 ;;
+    *)        echo 0 ;;
+  esac
+}
+
+for d in /sys/class/power_supply/hidpp_battery_*; do
+  [ -r "$d/capacity_level" ] || continue
+  lvl=$(cat "$d/capacity_level" 2>/dev/null)
+  name=$(cat "$d/model_name" 2>/dev/null | sed 's/[[:space:]]*$//')
+  [ -n "$name" ] || name="Dispositivo sem fio"
+  lines="${lines}${name}: ${lvl}
+"
+  r=$(rank "$lvl")
+  if [ "$r" -gt "$worst_rank" ]; then
+    worst_rank=$r
+    worst="$name"
+    worst_lvl="$lvl"
+  fi
+done
+
+if [ "$notify" = "1" ]; then
+  if [ -z "$lines" ]; then
+    notify-send "Periféricos" "Nenhum dispositivo sem fio detectado"
+  else
+    notify-send "Bateria dos periféricos" "$lines"
+  fi
+  exit 0
+fi
+
+# Nada detectado, ou nível OK → módulo oculto (text vazio)
+if [ "$worst_rank" -lt 2 ]; then
+  printf '{"text":"","tooltip":"","class":"ok"}\n'
+  exit 0
+fi
+
+if [ "$worst_rank" = "3" ]; then
+  icon="󰂎"; cls="critical"; word="crítica"
+else
+  icon="󰁻"; cls="warning"; word="baixa"
+fi
+
+printf '{"text":"%s","tooltip":"%s · bateria %s (%s)","class":"%s"}\n' \
+  "$icon" "$worst" "$word" "$worst_lvl" "$cls"

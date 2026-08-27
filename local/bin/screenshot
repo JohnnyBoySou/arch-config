@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Captura de tela estilo macOS: salva em ~/Pictures, copia para o clipboard
+# e mostra uma notificação com miniatura clicável.
+# uso: screenshot region|full|window
+set -uo pipefail
+
+modo="${1:-region}"
+dir="$HOME/Pictures"
+mkdir -p "$dir"
+arquivo="$dir/Screenshot-$(date +%Y%m%d-%H%M%S).png"
+
+case "$modo" in
+    region)
+        geo="$(slurp)" || exit 0          # Esc cancela a seleção
+        grim -g "$geo" "$arquivo" || exit 1
+        ;;
+    window)
+        geo="$(hyprctl activewindow -j | python3 -c \
+            'import json,sys; w=json.load(sys.stdin); x,y=w["at"]; c,l=w["size"]; print(f"{x},{y} {c}x{l}")')"
+        grim -g "$geo" "$arquivo" || exit 1
+        ;;
+    full)
+        grim "$arquivo" || exit 1
+        ;;
+    *)
+        echo "uso: screenshot region|full|window" >&2; exit 2
+        ;;
+esac
+
+wl-copy < "$arquivo"
+
+# notificação com miniatura; clicar abre a imagem no visualizador padrão
+acao="$(notify-send -a "Captura de tela" -i "$arquivo" \
+        -A "abrir=Abrir" -A "pasta=Mostrar na pasta" \
+        "Captura salva" "$(basename "$arquivo")")"
+
+case "$acao" in
+    abrir) xdg-open "$arquivo" ;;
+    pasta) xdg-open "$dir" ;;
+esac

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Soltar uma janela na borda da tela a manda para o workspace vizinho.
+# Disparado no release do botao esquerdo (bindrn), entao o caminho comum
+# precisa sair barato: so chama o python quando o cursor esta numa borda.
+MARGEM=12
+EDGES="$HOME/.cache/hypr-edges"
+
+# cache das faixas de borda (uma linha "xmin xmax" por monitor).
+# invalidado por um `exec` no hyprland.conf a cada reload.
+if [ ! -s "$EDGES" ]; then
+    hyprctl monitors -j 2>/dev/null | python3 -c "
+import json,sys
+for m in json.load(sys.stdin):
+    print(m['x'], m['x']+m['width']-1)
+" > "$EDGES" 2>/dev/null || exit 0
+fi
+
+POS=$(hyprctl cursorpos 2>/dev/null) || exit 0
+CX=${POS%%,*}
+[ -n "$CX" ] || exit 0
+
+NA_BORDA=0
+while read -r XMIN XMAX; do
+    [ -n "$XMAX" ] || continue
+    if [ "$CX" -le $((XMIN + MARGEM)) ] || [ "$CX" -ge $((XMAX - MARGEM)) ]; then
+        NA_BORDA=1; break
+    fi
+done < "$EDGES"
+[ "$NA_BORDA" = "1" ] || exit 0
+
+exec python3 - <<'PY'
+import json, subprocess, sys
+
+MARGEM = 12
+GAVETA = 5
+WS_MIN, WS_MAX = 1, 4
+
+def hypr(*a):
+    return subprocess.run(["hyprctl", *a], capture_output=True, text=True).stdout
+
+try:
+    cx, cy = (int(n) for n in hypr("cursorpos").strip().split(","))
+except ValueError:
+    sys.exit(0)
+
+mon = next((m for m in json.loads(hypr("monitors", "-j") or "[]")
+            if m["x"] <= cx < m["x"] + m["width"]
+            and m["y"] <= cy < m["y"] + m["height"]), None)
+if mon is None:
+    sys.exit(0)
+
+if cx <= mon["x"] + MARGEM:
+    passo = -1
+elif cx >= mon["x"] + mon["width"] - 1 - MARGEM:
+    passo = +1
+else:
+    sys.exit(0)
+
+win = json.loads(hypr("activewindow", "-j") or "{}")
+if not win.get("address"):
+    sys.exit(0)
+
+atual = win.get("workspace", {}).get("id")
+if atual is None or atual < 0:
+    sys.exit(0)
+
+destino = atual + passo
+if destino == GAVETA:
+    destino += passo
+if not (WS_MIN <= destino <= WS_MAX):
+    sys.exit(0)
+
+hypr("dispatch", "movetoworkspace", f"{destino},address:{win['address']}")
+PY

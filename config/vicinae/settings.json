@@ -1,0 +1,50 @@
+{
+   "$schema": "https://vicinae.com/schemas/config.json",
+   "theme": {
+      "dark": {
+         "name": "macos-dark",
+         "icon_theme": "WhiteSur-dark"
+      },
+      "light": {
+         "name": "macos-light",
+         "icon_theme": "WhiteSur-light"
+      }
+   },
+   "font": {
+      "normal": {
+         "family": "auto"
+      }
+   },
+   "launcher_window": {
+      "opacity": 0.5,
+      "material": "blur",
+      "rounding": 16,
+      "client_side_decorations": {
+         "enabled": true,
+         "border_width": 0,
+         "shadow_size": 32
+      },
+      "compact_mode": {
+         "enabled": true
+      },
+      "size": {
+         "width": 780,
+         "height": 490
+      },
+      "clock": {
+         "enabled": true
+      },
+      "layer_shell": {
+         "enabled": true,
+         "keyboard_interactivity": "exclusive",
+         "layer": "top"
+      }
+   },
+   "escape_key_behavior": "navigate_back",
+   "pop_to_root_on_close": true,
+   "search_files_in_root": true,
+   "close_on_focus_loss": false,
+   "telemetry": {
+      "system_info": false
+   }
+}

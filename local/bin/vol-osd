@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Ajusta o volume e mostra o OSD com a faixa que estiver tocando.
+# Uso: vol-osd raise|lower|mute|mic-mute
+#
+# Roda em bindel (repete enquanto a tecla fica pressionada), entao evita
+# esperar: `wpctl set-volume` leva ~54ms porque aguarda o WirePlumber
+# propagar. Aqui o ajuste vai para segundo plano e o valor mostrado no OSD
+# e calculado na hora, o que deixa o caminho todo em ~12ms.
+set -u
+
+STEP=50        # em milesimos: 50 = 5%
+MAXLEN=42
+SINK="@DEFAULT_AUDIO_SINK@"
+CACHE="${XDG_RUNTIME_DIR:-/tmp}/vol-osd-track"
+CACHE_TTL=2
+
+ACAO=${1:-}
+[ "$ACAO" = "mic-mute" ] && exec swayosd-client --input-volume mute-toggle
+
+# estado atual: "Volume: 0.35" ou "Volume: 0.35 [MUTED]"
+RAW=$(wpctl get-volume "$SINK" 2>/dev/null) || exit 0
+TMP=${RAW#*Volume: }
+VOL=${TMP%% *}
+[ -n "$VOL" ] || exit 0
+[[ $RAW == *MUTED* ]] && MUTED=1 || MUTED=0
+
+# "0.35" -> 350 milesimos, sem awk/bc
+INT=${VOL%%.*}
+FRAC=${VOL#*.}000
+MIL=$(( 10#$INT * 1000 + 10#${FRAC:0:3} ))
+
+case $ACAO in
+    raise)
+        wpctl set-volume -l 1 "$SINK" "$((STEP / 10))%+" &
+        MIL=$(( MIL + STEP )); (( MIL > 1000 )) && MIL=1000 ;;
+    lower)
+        wpctl set-volume "$SINK" "$((STEP / 10))%-" &
+        MIL=$(( MIL - STEP )); (( MIL < 0 )) && MIL=0 ;;
+    mute)
+        wpctl set-mute "$SINK" toggle &
+        MUTED=$(( 1 - MUTED )) ;;
+    *) exit 1 ;;
+esac
+
+if (( MUTED == 1 || MIL == 0 )); then
+    ICON=audio-volume-muted
+elif (( MIL < 340 )); then ICON=audio-volume-low
+elif (( MIL < 670 )); then ICON=audio-volume-medium
+else                       ICON=audio-volume-high
+fi
+
+printf -v PROG '%d.%03d' $(( MIL / 1000 )) $(( MIL % 1000 ))
+
+# faixa tocando: cache curto, porque a musica nao muda a cada tecla
+TRACK=""
+TS=""
+if [ -f "$CACHE" ]; then
+    read -r TS CACHED < "$CACHE" 2>/dev/null || true
+    if [ -n "$TS" ] && (( EPOCHSECONDS - TS < CACHE_TTL )); then
+        TRACK=$CACHED
+    fi
+fi
+
+if [ -z "$TS" ] || (( EPOCHSECONDS - TS >= CACHE_TTL )); then
+    LINE=$(playerctl metadata --format '{{status}}|{{title}} · {{artist}}' 2>/dev/null || true)
+    case $LINE in
+        Playing\|*|Paused\|*)
+            TRACK=${LINE#*|}
+            TRACK=${TRACK% · }
+            (( ${#TRACK} > MAXLEN )) && TRACK="${TRACK:0:MAXLEN-1}…" ;;
+        *) TRACK="" ;;
+    esac
+    printf '%s %s\n' "$EPOCHSECONDS" "$TRACK" > "$CACHE"
+fi
+
+if [ -n "$TRACK" ]; then
+    exec swayosd-client --custom-icon "$ICON" --custom-progress "$PROG" --custom-progress-text "$TRACK"
+else
+    exec swayosd-client --custom-icon "$ICON" --custom-progress "$PROG"
+fi

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Menu de energia. Fecha se já estiver aberto (mesmo toggle do app-launcher).
+pkill -x wofi 2>/dev/null && exit 0
+
+CHOICE=$(printf '%s\n' \
+  "󰌾  Bloquear" \
+  "󰗽  Encerrar sessão" \
+  "󰤄  Suspender" \
+  "󰜉  Reiniciar" \
+  "󰐥  Desligar" \
+  | wofi --dmenu \
+         --prompt "Energia" \
+         --conf /home/sousa/.config/wofi/config-power \
+         --style /home/sousa/.config/wofi/style-power.css)
+
+case "$CHOICE" in
+  *Bloquear*)   hyprlock ;;
+  *Encerrar*)   hyprctl dispatch exit ;;
+  *Suspender*)  hyprlock & sleep 0.4; systemctl suspend ;;
+  *Reiniciar*)  systemctl reboot ;;
+  *Desligar*)   systemctl poweroff ;;
+esac

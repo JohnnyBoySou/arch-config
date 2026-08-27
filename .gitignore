@@ -1,0 +1,13 @@
+# Backups gerados enquanto mexo nas configs
+*.bak
+*.bak-*
+*.backup*
+*.pre-*
+*.old
+*.nao-usado
+__pycache__/
+*.pyc
+
+# Estado que nao deve viajar entre maquinas
+config/fish/fish_history
+config/fish/fish_variables

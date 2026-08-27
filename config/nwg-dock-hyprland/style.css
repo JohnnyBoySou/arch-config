@@ -1,0 +1,53 @@
+/* Dock — só blur, sem "vidro" (o blur vem do Hyprland via layerrule) */
+window {
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 20px;
+  border-style: none;
+}
+
+#box {
+  padding: 6px 10px;
+}
+
+/* traço branco por baixo do app em foco, como no macOS */
+#active {
+  border-bottom: solid 3px;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+button, image {
+  background: none;
+  border-style: none;
+  box-shadow: none;
+  color: #f2f2f7;
+}
+
+button {
+  padding: 5px;
+  margin: 0 3px;
+  border-radius: 12px;
+  color: #f2f2f7;
+  font-size: 12px;
+}
+
+/* realce discreto, sem zoom/reflow */
+button:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+}
+
+button:focus { box-shadow: none; }
+
+/* menu do botão direito */
+menu {
+  background: rgba(40, 40, 44, 0.96);
+  color: #f2f2f7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 4px;
+}
+menuitem {
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+menuitem:hover { background-color: #0a84ff; color: #ffffff; }

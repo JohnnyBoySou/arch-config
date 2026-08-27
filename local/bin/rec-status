@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Módulo waybar: indicador de gravação em curso. Vazio quando não grava.
+pid="$(pgrep -x wf-recorder | head -1)"
+if [[ -z "$pid" ]]; then
+    printf '{"text":"","class":"idle"}\n'
+    exit 0
+fi
+seg="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
+seg="${seg:-0}"
+printf '{"text":"● %d:%02d","class":"recording","tooltip":"Gravando — clique para parar"}\n' \
+    "$((seg / 60))" "$((seg % 60))"

@@ -1,0 +1,8 @@
+[Unit]
+Description=Troca o wallpaper do Hyprland por um aleatorio
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/wallpaper-random
