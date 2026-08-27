@@ -4,6 +4,7 @@
 #   ./install.sh              instala as configs (faz backup do que ja existe)
 #   ./install.sh --packages   instala tambem os pacotes de packages/
 #   ./install.sh --dry-run    so mostra o que seria feito
+#   ./install.sh --no-aur     com --packages, nao instala os pacotes do AUR
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,11 +14,13 @@ ORIGINAL_HOME="/home/sousa"   # home da maquina onde as configs nasceram
 BACKUP="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 DRY_RUN=0
 WITH_PACKAGES=0
+WITH_AUR=1
 
 for arg in "$@"; do
     case "$arg" in
         --dry-run)  DRY_RUN=1 ;;
         --packages) WITH_PACKAGES=1 ;;
+        --no-aur)   WITH_AUR=0 ;;
         -h|--help)  sed -n '2,7p' "$0"; exit 0 ;;
         *) echo "opcao desconhecida: $arg"; exit 1 ;;
     esac
@@ -99,7 +102,9 @@ if (( WITH_PACKAGES )); then
     echo "  $(wc -w <<< "$pkgs") pacotes (pulando os de kernel/driver desta maquina)"
     run sudo pacman -S --needed --noconfirm $pkgs
     echo "==> pacotes do AUR (yay)"
-    if command -v yay >/dev/null; then
+    if (( ! WITH_AUR )); then
+        echo "  pulado (--no-aur). Sem eles o tema WhiteSur, o cursor e a fonte nao aparecem."
+    elif command -v yay >/dev/null; then
         run yay -S --needed --noconfirm $(grep -vE '^(yay|.*-debug)$' "$REPO/packages/aur.txt" | tr '\n' ' ')
     else
         echo "  yay nao encontrado. Instale primeiro:"

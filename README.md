@@ -6,12 +6,40 @@ dock embaixo, Launchpad, control center, Spotlight, atalhos com `SUPER` fazendo 
 Este repositório carrega os arquivos de config, os scripts auxiliares e a lista de pacotes,
 para reproduzir o mesmo ambiente em outra máquina.
 
-## Instalar em outra máquina
+## Instalar num Arch recém-instalado
+
+Logo depois de terminar a instalação do Arch, com o usuário já criado e com rede:
 
 ```bash
 git clone https://github.com/JohnnyBoySou/arch-config.git ~/Projetos/arch-config
 cd ~/Projetos/arch-config
+./bootstrap.sh
+```
 
+O `bootstrap.sh` instala `git`/`base-devel`, compila o `yay` se não houver, e chama o
+`install.sh --packages`. Use `./bootstrap.sh --no-aur` para pular os pacotes do AUR
+(sem eles o tema WhiteSur, o cursor Apple e a fonte San Francisco não aparecem).
+
+### A partir do pendrive (sem rede)
+
+O pendrive Ventoy com o ISO do Arch também carrega uma cópia deste repositório em
+`arch-config/`. Depois do primeiro boot no sistema novo:
+
+```bash
+sudo mount /dev/sdb1 /mnt              # a partição exFAT do Ventoy (confira com lsblk)
+git clone /mnt/arch-config ~/Projetos/arch-config
+cd ~/Projetos/arch-config && ./bootstrap.sh
+```
+
+Clone em vez de copiar: o exFAT não guarda a permissão de execução, e o `git clone`
+devolve o bit `+x` dos scripts. Sem `git` instalado ainda:
+`cp -r /mnt/arch-config ~/Projetos/ && chmod +x ~/Projetos/arch-config/*.sh`.
+Os pacotes ainda exigem rede — só as configs funcionam totalmente offline
+(`./install.sh` sem `--packages`).
+
+## Instalar numa máquina que já está montada
+
+```bash
 ./install.sh --dry-run      # confere o que vai ser feito, sem tocar em nada
 ./install.sh --packages     # instala pacotes + configs
 ```
