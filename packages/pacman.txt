@@ -18,6 +18,7 @@ fd
 ffmpegthumbs
 firefox
 fish
+flatpak
 fzf
 ghostty
 git
@@ -40,6 +41,9 @@ kimageformats
 kio-admin
 kitty
 kvantum
+lib32-mesa
+lib32-vulkan-icd-loader
+lib32-vulkan-radeon
 libnotify
 libva-intel-driver
 linux
@@ -63,6 +67,7 @@ papirus-icon-theme
 pavucontrol
 pipewire-pulse
 polkit-kde-agent
+postgresql
 postgresql-libs
 python-cairo
 python-gobject
@@ -76,6 +81,7 @@ slurp
 smartmontools
 spotify-player
 starship
+steam
 sudo
 swaync
 swayosd
