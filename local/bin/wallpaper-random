@@ -1,42 +1,4 @@
 #!/usr/bin/env bash
-# Sorteia um wallpaper de ~/Pictures/Wallpapers/anime e aplica via hyprpaper.
-# Mantem ~/.cache/wallpaper/current apontando para o atual (usado pelo hyprlock).
-set -euo pipefail
-
-DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
-LINK="$HOME/.cache/wallpaper/current"
-
-# Rodando pelo systemd o ambiente vem vazio; descobre a instancia do Hyprland.
-if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-    rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-    sig=$(ls -t "$rt/hypr" 2>/dev/null | head -1) || true
-    [ -n "${sig:-}" ] || { echo "wallpaper-random: nenhuma sessao Hyprland ativa" >&2; exit 1; }
-    export HYPRLAND_INSTANCE_SIGNATURE="$sig"
-    export XDG_RUNTIME_DIR="$rt"
-fi
-
-mapfile -t WALLS < <(find "$DIR" -maxdepth 1 -type f \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort)
-[ "${#WALLS[@]}" -gt 0 ] || { echo "wallpaper-random: nenhuma imagem em $DIR" >&2; exit 1; }
-
-# Evita sortear o mesmo que ja esta na tela (se houver mais de um disponivel).
-CURRENT=$(readlink "$LINK" 2>/dev/null || true)
-PICK=$(printf '%s\n' "${WALLS[@]}" | shuf -n1)
-if [ "${#WALLS[@]}" -gt 1 ]; then
-    tries=0
-    while [ "$PICK" = "$CURRENT" ] && [ "$tries" -lt 10 ]; do
-        PICK=$(printf '%s\n' "${WALLS[@]}" | shuf -n1)
-        tries=$((tries + 1))
-    done
-fi
-
-# hyprpaper 0.8.x: nao existe mais "preload" e o monitor precisa ser explicito
-# (a forma ",caminho" retorna sucesso mas nao troca nada).
-mapfile -t MONITORS < <(hyprctl monitors -j | python3 -c \
-    'import json,sys; [print(m["name"]) for m in json.load(sys.stdin)]')
-for m in "${MONITORS[@]}"; do
-    hyprctl hyprpaper wallpaper "$m,$PICK" >/dev/null
-done
-
-ln -sfn "$PICK" "$LINK"
-echo "wallpaper: $(basename "$PICK")"
+# Compatibilidade: o wallpaper agora e por workspace (wallpaper-workspace).
+# Sem argumentos sorteia de novo so o workspace ativo; "--all" sorteia todos.
+exec "$HOME/.local/bin/wallpaper-workspace" reroll "$@"

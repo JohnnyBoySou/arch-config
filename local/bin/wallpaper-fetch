@@ -4,11 +4,16 @@
 #   wallpaper-fetch                                -> 30 imagens das queries padrao
 #   wallpaper-fetch 15 "anime girl sword"
 #   WALLPAPER_PREFIX=cozy wallpaper-fetch 20 "anime scenery"   -> prefixo do arquivo
+#   WALLPAPER_PURITY=110 wallpaper-fetch 25 "ecchi"             -> inclui "sketchy"
+#
+# WALLPAPER_PURITY: 3 bits -> sfw/sketchy/nsfw. 100=so SFW (padrao),
+# 110=SFW+sketchy, 010=so sketchy. O bit nsfw (001) exige WALLHAVEN_API_KEY.
 set -euo pipefail
 
 DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
 LIMIT="${1:-30}"
 PREFIX="${WALLPAPER_PREFIX:-girl}"
+PURITY="${WALLPAPER_PURITY:-100}"
 shift || true
 
 if [ "$#" -gt 0 ]; then
@@ -24,13 +29,19 @@ mkdir -p "$DIR"
 existing=$(find "$DIR" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null \
     | sed -E 's/^.*-([a-z0-9]{6})\.[a-z]+$/\1/' | sort -u)
 
-# API sem key: apenas purity=100 (SFW). categories=010 = anime.
+# categories=010 = anime. purity configuravel; nsfw so com API key.
+api_key_arg=()
+if [ -n "${WALLHAVEN_API_KEY:-}" ]; then
+    api_key_arg=(-d "apikey=$WALLHAVEN_API_KEY")
+elif [ "${PURITY:2:1}" = "1" ]; then
+    echo "aviso: purity nsfw pedido sem WALLHAVEN_API_KEY - o wallhaven vai ignorar esse bit" >&2
+fi
 urls=$(for q in "${QUERIES[@]}"; do
     for sort in toplist favorites relevance; do
         for page in 1 2; do
             curl -sG "https://wallhaven.cc/api/v1/search" \
                 --data-urlencode "q=$q" \
-                -d categories=010 -d purity=100 \
+                -d categories=010 -d "purity=$PURITY" "${api_key_arg[@]}" \
                 -d "ratios=21x9,32x9,16x9,16x10" \
                 -d atleast=2560x1080 \
                 -d "sorting=$sort" -d "page=$page" \

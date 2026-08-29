@@ -5,4 +5,4 @@ PartOf=graphical-session.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/wallpaper-random
+ExecStart=%h/.local/bin/wallpaper-workspace reroll --all

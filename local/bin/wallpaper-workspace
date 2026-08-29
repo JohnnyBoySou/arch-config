@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# Um wallpaper diferente por workspace do Hyprland, via awww (ex-swww).
+#
+# Subcomandos:
+#   daemon        escuta o socket2 e aplica o wallpaper do workspace ativo
+#   apply         reconcilia agora (aplica o wallpaper certo em cada monitor)
+#   reroll        sorteia de novo so o workspace ativo
+#   reroll --all  esquece todas as atribuicoes (cada workspace ganha uma nova)
+#   status        mostra qual wallpaper esta atribuido a cada workspace
+#
+# Estado: ~/.cache/wallpaper/ws/ws-<id> -> symlink para a imagem.
+# ~/.cache/wallpaper/current sempre aponta para o wallpaper do monitor
+# focado (o hyprlock le esse symlink).
+set -euo pipefail
+
+DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
+STATE="$HOME/.cache/wallpaper/ws"
+LINK="$HOME/.cache/wallpaper/current"
+LOCK="$HOME/.cache/wallpaper/.lock"
+
+# --- transicao (awww) ---------------------------------------------------
+# 'fade' com bezier linear = velocidade constante do inicio ao fim. O padrao
+# do awww (.54,0,.34,.99) acelera no meio e desacelera nas pontas.
+TRANSITION_TYPE="${WALLPAPER_TRANSITION:-fade}"
+TRANSITION_BEZIER="${WALLPAPER_BEZIER:-0.0,0.0,1.0,1.0}"
+TRANSITION_FPS="${WALLPAPER_FPS:-60}"
+# Curto na troca de workspace (voce alterna rapido e um fade longo deixaria
+# a tela sempre em meio-caminho); mais folgado no reroll, onde nao ha pressa.
+DURATION_SWITCH="${WALLPAPER_DURATION_SWITCH:-0.4}"
+DURATION_REROLL="${WALLPAPER_DURATION_REROLL:-1.5}"
+
+mkdir -p "$STATE" "$(dirname "$LINK")"
+
+# Rodando pelo systemd o ambiente vem vazio; descobre a instancia do Hyprland.
+ensure_hypr_env() {
+    [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && return 0
+    local rt sig
+    rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    sig=$(ls -t "$rt/hypr" 2>/dev/null | head -1) || true
+    [ -n "${sig:-}" ] || { echo "wallpaper-workspace: nenhuma sessao Hyprland ativa" >&2; return 1; }
+    export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+    export XDG_RUNTIME_DIR="$rt"
+}
+
+walls() {
+    find "$DIR" -maxdepth 1 -type f \
+        \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort
+}
+
+# "<monitor> <workspace-id> <focado:0|1>" por linha.
+monitors() {
+    hyprctl monitors -j | python3 -c 'import json,sys
+for m in json.load(sys.stdin):
+    print(m["name"], m["activeWorkspace"]["id"], int(bool(m.get("focused"))))'
+}
+
+# Imagens ja atribuidas a algum workspace (para nao repetir entre workspaces).
+assigned() {
+    find "$STATE" -maxdepth 1 -name 'ws-*' -type l -printf '%l\n' 2>/dev/null || true
+}
+
+pick_unused() {
+    local all used free
+    all=$(walls)
+    [ -n "$all" ] || { echo "wallpaper-workspace: nenhuma imagem em $DIR" >&2; return 1; }
+    used=$(assigned)
+    # Se ja usamos tudo (mais workspaces que imagens), libera o conjunto inteiro.
+    free=$(printf '%s\n' "$all" | grep -vxF -f <(printf '%s\n' "$used") || true)
+    [ -n "$free" ] || free="$all"
+    printf '%s\n' "$free" | shuf -n1
+}
+
+# Wallpaper do workspace, sorteando na primeira visita.
+assign() {
+    local ws="$1" link="$STATE/ws-$ws" target
+    if target=$(readlink "$link" 2>/dev/null) && [ -f "$target" ]; then
+        printf '%s\n' "$target"; return 0
+    fi
+    target=$(pick_unused) || return 1
+    ln -sfn "$target" "$link"
+    printf '%s\n' "$target"
+}
+
+# Aplica em cada monitor o wallpaper do seu workspace ativo.
+# So chama o hyprpaper quando a imagem realmente mudou -- cada chamada
+# forca um decode novo, entao repetir a toa custa CPU.
+apply() {
+    ensure_hypr_env || return 0
+    local dur="${1:-$DURATION_SWITCH}"
+    local mon ws focused target applied
+    while read -r mon ws focused; do
+        [ -n "${mon:-}" ] || continue
+        target=$(assign "$ws") || continue
+        applied=$(cat "$STATE/.applied-$mon" 2>/dev/null || true)
+        if [ "$target" != "$applied" ]; then
+            # So marca como aplicado se o awww aceitou. No boot o daemon pode
+            # ainda nao estar de pe -- gravar antes deixaria o estado mentindo
+            # e o wallpaper so apareceria na proxima troca de workspace.
+            if awww img --outputs "$mon" \
+                    --transition-type "$TRANSITION_TYPE" \
+                    --transition-bezier "$TRANSITION_BEZIER" \
+                    --transition-duration "$dur" \
+                    --transition-fps "$TRANSITION_FPS" \
+                    "$target" >/dev/null 2>&1; then
+                printf '%s\n' "$target" > "$STATE/.applied-$mon"
+            else
+                rm -f "$STATE/.applied-$mon"
+            fi
+        fi
+        [ "$focused" = 1 ] && ln -sfn "$target" "$LINK"
+    done < <(monitors)
+}
+
+cmd_reroll() {
+    ensure_hypr_env || exit 1
+    if [ "${1:-}" = "--all" ]; then
+        # Some com tudo: os visiveis trocam agora, os demais na proxima visita.
+        find "$STATE" -maxdepth 1 -name 'ws-*' -delete
+    else
+        # So o workspace do monitor focado.
+        local ws
+        ws=$(monitors | awk '$3==1 {print $2; exit}')
+        [ -n "${ws:-}" ] && rm -f "$STATE/ws-$ws"
+    fi
+    apply "$DURATION_REROLL"
+    echo "wallpaper: $(basename "$(readlink "$LINK" 2>/dev/null || echo -)")"
+}
+
+cmd_daemon() {
+    ensure_hypr_env || exit 1
+    trap 'kill 0 2>/dev/null; exit 0' TERM INT
+    # Espera o awww-daemon subir (exec-once nao garante ordem).
+    for _ in $(seq 30); do
+        awww query >/dev/null 2>&1 && break
+        sleep 1
+    done
+    apply
+    # Reconecta se o Hyprland reiniciar o socket.
+    while true; do
+        python3 - "$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" <<'PY' || true
+import socket, sys
+# Eventos que podem mudar qual workspace esta visivel em algum monitor.
+WATCH = ("workspace>>", "workspacev2>>", "focusedmon>>", "focusedmonv2>>",
+         "moveworkspace>>", "moveworkspacev2>>", "monitoradded", "monitorremoved")
+s = socket.socket(socket.AF_UNIX)
+s.connect(sys.argv[1])
+buf = b""
+while True:
+    chunk = s.recv(4096)
+    if not chunk:
+        break
+    buf += chunk
+    *lines, buf = buf.split(b"\n")
+    for line in lines:
+        ev = line.decode("utf-8", "replace")
+        if ev.startswith(WATCH):
+            try:
+                print("go", flush=True)
+            except BrokenPipeError:
+                sys.exit(0)   # o daemon foi reiniciado; nada a reportar
+PY
+        sleep 2
+    done | while read -r _; do
+        # flock evita corrida entre o daemon e o timer do systemd.
+        flock "$LOCK" "$0" apply || true
+    done
+}
+
+cmd_status() {
+    local ws target
+    printf '%-6s %s\n' "WS" "WALLPAPER"
+    for f in "$STATE"/ws-*; do
+        [ -L "$f" ] || continue
+        ws="${f##*/ws-}"; target=$(readlink "$f")
+        printf '%-6s %s\n' "$ws" "$(basename "$target")"
+    done | sort -n
+}
+
+case "${1:-apply}" in
+    daemon) cmd_daemon ;;
+    apply)  shift; apply "$@" ;;
+    reroll) shift; cmd_reroll "$@" ;;
+    status) cmd_status ;;
+    *) echo "uso: wallpaper-workspace {daemon|apply|reroll [--all]|status}" >&2; exit 2 ;;
+esac

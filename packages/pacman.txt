@@ -1,5 +1,6 @@
 amd-ucode
 ark
+awww
 base
 base-devel
 bat
