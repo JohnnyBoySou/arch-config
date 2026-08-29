@@ -83,7 +83,7 @@ Para incluir uma config nova, adicione o caminho lá e rode `./sync.sh`.
 
 | Caminho | Conteúdo |
 |---|---|
-| `config/hypr/` | Hyprland, hyprlock, hypridle, hyprpaper, hyprbars + [`ATALHOS.md`](config/hypr/ATALHOS.md) |
+| `config/hypr/` | Hyprland, hyprlock, hypridle, hyprbars + [`ATALHOS.md`](config/hypr/ATALHOS.md) |
 | `config/waybar/` | barra do topo (estilo macOS, ilhas) |
 | `config/quickshell/controlcenter/` | control center em QML |
 | `config/nwg-dock-hyprland/`, `config/nwg-drawer/` | dock e Launchpad |
@@ -100,7 +100,7 @@ Para incluir uma config nova, adicione o caminho lá e rode `./sync.sh`.
 ## Dependências principais
 
 Hyprland · waybar · quickshell · nwg-dock-hyprland · nwg-drawer · wofi · vicinae · swaync ·
-swayosd · ghostty · fish · starship · dolphin · hyprpaper/hyprlock/hypridle · grim + slurp ·
+swayosd · ghostty · fish · starship · dolphin · awww · hyprlock/hypridle · grim + slurp ·
 wf-recorder · cliphist · wl-clipboard
 
 Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whitesur-git`,
@@ -109,6 +109,9 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
 ## Notas
 
 - Wallpapers não estão no repositório (são pesados). Use `~/.local/bin/wallpaper-fetch`.
+- Cada workspace tem seu próprio wallpaper, aplicado pelo daemon `wallpaper-workspace`
+  (backend `awww`, com fade linear). `wallpaper-workspace status` mostra o mapa atual;
+  `Super+Shift+W` sorteia de novo o workspace ativo.
 - `~/.face` (foto do usuário no hyprlock/SDDM) **não** está aqui, por ser um repositório público — copie a sua para `~/.face`.
 - Plugins do fish: rode `fisher update` depois de instalar (o `fish_plugins` está versionado, o `fish_variables` não).
 - O `sync.sh` ignora backups (`*.bak*`, `*.pre-*`, `*.backup*`) e o histórico do fish.
