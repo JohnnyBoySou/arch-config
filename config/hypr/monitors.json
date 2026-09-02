@@ -1,0 +1,26 @@
+{
+  "primary": "",
+  "menubar_on_primary": false,
+  "monitors": {
+    "HDMI-A-1": {
+      "x": 1366,
+      "y": 0,
+      "mode": "preferred",
+      "scale": 1.0,
+      "transform": 0,
+      "vrr": false,
+      "mirror": "",
+      "enabled": true
+    },
+    "HDMI-A-2": {
+      "x": 0,
+      "y": 0,
+      "mode": "preferred",
+      "scale": 1.0,
+      "transform": 0,
+      "vrr": false,
+      "mirror": "",
+      "enabled": true
+    }
+  }
+}

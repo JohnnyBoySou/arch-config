@@ -1,0 +1,18 @@
+#!/bin/sh
+# Arranca a dock (nwg-dock-hyprland), reiniciando a que estiver a correr.
+# Os argumentos da dock vivem so aqui — dock-toggle e mac-reload chamam este script.
+
+pkill -x nwg-dock-hyprla 2>/dev/null && sleep 0.3
+
+set -- -p bottom -i 44 -x -mb 6 \
+    -c "$HOME/.local/bin/app-launcher" \
+    -lp start \
+    -ico /usr/share/icons/WhiteSur-dark/apps/scalable/view-app-grid.svg \
+    -r
+
+OUTPUT=$("$HOME/.local/bin/monitor-layout" dock-args 2>/dev/null)
+if [ -n "$OUTPUT" ]; then
+    set -- "$@" -o "$OUTPUT"
+fi
+
+exec nwg-dock-hyprland "$@"

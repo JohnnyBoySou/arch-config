@@ -93,7 +93,7 @@ Para incluir uma config nova, adicione o caminho lá e rode `./sync.sh`.
 | `config/ghostty/`, `config/kitty/` | terminais |
 | `config/gtk-*`, `config/qt*ct/`, `config/Kvantum/`, `config/kdeglobals` | tema WhiteSur em GTK/Qt/KDE |
 | `config/dolphinrc`, `config/gwenviewrc`, `config/trashrc` | Dolphin fazendo de Finder |
-| `local/bin/` | scripts: `spotlight`, `app-launcher`, `finder`, `screenshot`, `screenrecord`, `win-minimize`, `mac-clock`, `power-menu`, `wallpaper-*`… |
+| `local/bin/` | scripts: `spotlight`, `app-launcher`, `finder`, `screenshot`, `screenrecord`, `win-minimize`, `mac-clock`, `power-menu`, `monitor-layout`, `wallpaper-*`… |
 | `local/share/` | tema de cores macOSDark, handler de URL |
 | `packages/` | `pacman.txt` (oficiais), `aur.txt` (AUR) |
 
@@ -121,6 +121,20 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
   da borda, arredondamento, espaçamentos e animação. Para alterar pelo terminal, use
   `workspace-style set 2 "Trabalho" "#BF5AF2"`; `workspace-style list` mostra a
   configuração e `workspace-style edit` abre tudo no editor e aplica ao salvar.
+- O layout dos monitores fica em `~/.config/hypr/monitors.json` e vira o
+  `monitor-layout.conf` que o `hyprland.conf` carrega. O bloco **Monitores** do Centro de
+  Controle (ou o ícone 󰍹 na menubar) abre um mapa onde se arrasta cada tela para posicionar,
+  com encaixe nas bordas das vizinhas. Resolução, taxa, escala, rotação, espelho e
+  ligar/desligar pedem confirmação de 15 s: se ela estourar, um `hyprctl reload` devolve o
+  último estado salvo — é a saída para quando a mudança deixa a tela preta. Só são
+  oferecidas as escalas que dão pixel inteiro naquela largura.
+  Pelo terminal: `monitor-layout list`, `monitor-layout set HDMI-A-1 --x 1366`,
+  `monitor-layout commit` e `monitor-layout revert`.
+- O **monitor principal** (`monitor-layout primary HDMI-A-1`) é onde o workspace 1 nasce e
+  onde a sessão começa focada, e é para ele que a dock migra. O interruptor
+  `Menubar só no principal` estende isso à Waybar: como o binário não tem opção de saída,
+  o `waybar-start` gera uma cópia do config em `~/.cache/waybar` com a chave `output`.
+  Desligado, a barra sobe em todas as telas como sempre.
 - Os widgets de desktop mostram relógio/data, calendário e CPU/RAM/disco na layer
   inferior, acima do wallpaper e atrás das janelas. Alterne pelo botão `Widgets` do
   Centro de Controle ou com `Super+Shift+D`.

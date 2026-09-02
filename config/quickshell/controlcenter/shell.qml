@@ -19,6 +19,7 @@ ShellRoot {
     property bool networkOpen: false
     property bool powerOpen: false
     property bool notificationsOpen: false
+    property bool monitorsOpen: false
 
     // ── controle externo (menubar Waybar / atalho de teclado) ──
     IpcHandler {
@@ -102,6 +103,14 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "monitors"
+
+        function toggle(): void { root.monitorsOpen = !root.monitorsOpen }
+        function show(): void   { root.monitorsOpen = true }
+        function hide(): void   { root.monitorsOpen = false }
+    }
+
+    IpcHandler {
         target: "appearance"
 
         function toggle(): void { root.appearanceOpen = !root.appearanceOpen }
@@ -157,6 +166,11 @@ ShellRoot {
         onClosed: root.appearanceOpen = false
     }
 
+    MonitorPanel {
+        open: root.monitorsOpen
+        onClosed: root.monitorsOpen = false
+    }
+
     // ── áudio: acompanha a saída padrão do PipeWire ──
     PwObjectTracker { objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource] }
     readonly property var sink: Pipewire.defaultAudioSink
@@ -169,6 +183,7 @@ ShellRoot {
     readonly property bool dnd: Notifs.dnd
     property bool gameMode: false
     property bool recording: false
+    property string monitorSummary: "Organizar telas"
 
     Process {
         id: netProc
@@ -200,6 +215,17 @@ ShellRoot {
     }
 
     Process {
+        id: monitorProc
+        command: ["sh", "-c", "$HOME/.local/bin/monitor-layout summary 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const line = text.trim()
+                if (line !== "") root.monitorSummary = line
+            }
+        }
+    }
+
+    Process {
         id: recordingProc
         command: ["sh", "-c", "pgrep -x wf-recorder >/dev/null && echo true || echo false"]
         stdout: StdioCollector {
@@ -225,6 +251,7 @@ ShellRoot {
         if (!netProc.running) netProc.running = true
         if (!gameModeProc.running) gameModeProc.running = true
         if (!recordingProc.running) recordingProc.running = true
+        if (!monitorProc.running) monitorProc.running = true
     }
 
     onOpenChanged: if (open) refreshState()
@@ -406,6 +433,33 @@ ShellRoot {
                         onToggled: {
                             root.open = false
                             root.wallpaperOpen = true
+                        }
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.gap
+
+                    Tile {
+                        width: (parent.width - Theme.gap) / 2
+                        icon: "󰍹"
+                        label: "Monitores"
+                        sublabel: root.monitorSummary
+                        onToggled: {
+                            root.open = false
+                            root.monitorsOpen = true
+                        }
+                    }
+
+                    Tile {
+                        width: (parent.width - Theme.gap) / 2
+                        icon: "󰸌"
+                        label: "Aparência"
+                        sublabel: "Bordas, blur e sombras"
+                        onToggled: {
+                            root.open = false
+                            root.appearanceOpen = true
                         }
                     }
                 }

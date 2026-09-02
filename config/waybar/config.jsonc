@@ -25,6 +25,7 @@
     "cpu",
     "memory",
     "network",
+    "custom/monitors",
     "pulseaudio",
     "custom/controlcenter",
     "custom/power",
@@ -61,6 +62,14 @@
       "nwg-look": "Aparência",
       "qt6ct": "Qt6 Settings"
     }
+  },
+
+  "custom/monitors": {
+    "exec": "/home/sousa/.local/bin/monitor-layout waybar",
+    "return-type": "json",
+    "interval": 30,
+    "signal": 9,
+    "on-click": "qs -c controlcenter ipc call monitors toggle"
   },
 
   "custom/workspace-profile": {

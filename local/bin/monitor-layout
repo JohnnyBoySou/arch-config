@@ -1,0 +1,615 @@
+#!/usr/bin/env python3
+"""Layout dos monitores do Hyprland: posicao, modo, escala e monitor principal."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+CACHE_HOME = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+CONFIG = CONFIG_HOME / "hypr" / "monitors.json"
+LAYOUT = CONFIG_HOME / "hypr" / "monitor-layout.conf"
+PENDING = CACHE_HOME / "hypr" / "monitors-pending.json"
+
+MODE_RE = re.compile(r"^\d+x\d+@\d+(?:\.\d+)?$")
+# O Hyprland arredonda a escala para multiplos de 1/120 antes de validar.
+SCALE_STEP = 1 / 120
+SCALE_MIN = 0.5
+SCALE_MAX = 3.0
+DEFAULTS = {
+    "x": 0,
+    "y": 0,
+    "mode": "preferred",
+    "scale": 1.0,
+    "transform": 0,
+    "vrr": False,
+    "mirror": "",
+    "enabled": True,
+}
+
+
+def die(message: str) -> None:
+    print(f"monitor-layout: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+# ── estado salvo ────────────────────────────────────────────────────────────
+
+
+def normalize(name: str, raw: dict) -> dict:
+    profile = dict(DEFAULTS)
+    if not isinstance(raw, dict):
+        die(f"perfil de {name} precisa ser um objeto")
+
+    for key in ("x", "y", "transform"):
+        value = raw.get(key, DEFAULTS[key])
+        if isinstance(value, bool) or not isinstance(value, int):
+            die(f"{key} invalido em {name}")
+        profile[key] = value
+    if profile["transform"] not in range(8):
+        die(f"transform de {name} precisa ficar entre 0 e 7")
+
+    mode = raw.get("mode", DEFAULTS["mode"])
+    if mode != "preferred" and not (isinstance(mode, str) and MODE_RE.fullmatch(mode)):
+        die(f"modo invalido em {name}: {mode!r}; use 'preferred' ou LARGURAxALTURA@TAXA")
+    profile["mode"] = mode
+
+    scale = raw.get("scale", DEFAULTS["scale"])
+    if isinstance(scale, bool) or not isinstance(scale, (int, float)):
+        die(f"escala invalida em {name}")
+    if not SCALE_MIN <= float(scale) <= SCALE_MAX:
+        die(f"escala de {name} precisa ficar entre {SCALE_MIN} e {SCALE_MAX}")
+    profile["scale"] = float(scale)
+
+    for key in ("vrr", "enabled"):
+        value = raw.get(key, DEFAULTS[key])
+        if not isinstance(value, bool):
+            die(f"{key} de {name} precisa ser true ou false")
+        profile[key] = value
+
+    mirror = raw.get("mirror", DEFAULTS["mirror"])
+    if not isinstance(mirror, str):
+        die(f"mirror invalido em {name}")
+    profile["mirror"] = mirror.strip()
+
+    return profile
+
+
+def load_state(path: Path = CONFIG) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"primary": "", "menubar_on_primary": False, "monitors": {}}
+    except json.JSONDecodeError as error:
+        die(f"JSON invalido em {path}: {error}")
+
+    monitors = data.get("monitors")
+    if not isinstance(monitors, dict):
+        die(f"{path} precisa ter um objeto chamado 'monitors'")
+
+    return {
+        "primary": str(data.get("primary") or ""),
+        "menubar_on_primary": bool(data.get("menubar_on_primary", False)),
+        "monitors": {name: normalize(name, raw) for name, raw in monitors.items()},
+    }
+
+
+def save_state(state: dict, path: Path = CONFIG) -> None:
+    payload = {
+        "primary": state["primary"],
+        "menubar_on_primary": state["menubar_on_primary"],
+        "monitors": dict(sorted(state["monitors"].items())),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    temporary.replace(path)
+
+
+def load_working() -> dict:
+    """Estado em edicao: o pendente, se houver, senao o salvo."""
+    return load_state(PENDING) if PENDING.exists() else load_state()
+
+
+# ── Hyprland ────────────────────────────────────────────────────────────────
+
+
+def hyprctl(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["hyprctl", *args], capture_output=True, text=True, check=False
+    )
+
+
+def live_monitors() -> list[dict]:
+    result = hyprctl("monitors", "all", "-j")
+    if result.returncode != 0:
+        return []
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def reload_hyprland() -> None:
+    result = hyprctl("reload")
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "falha desconhecida"
+        die(f"nao foi possivel recarregar o Hyprland: {message}")
+
+
+def apply_live(name: str, profile: dict) -> None:
+    result = hyprctl("keyword", "monitor", monitor_line(name, profile))
+    if result.returncode != 0 or "ok" not in result.stdout.lower():
+        message = result.stderr.strip() or result.stdout.strip() or "falha desconhecida"
+        die(f"o Hyprland recusou a configuracao de {name}: {message}")
+
+
+# ── geracao do .conf ────────────────────────────────────────────────────────
+
+
+def format_scale(scale: float) -> str:
+    return f"{scale:g}"
+
+
+def monitor_line(name: str, profile: dict) -> str:
+    if not profile["enabled"]:
+        return f"{name}, disable"
+
+    parts = [
+        name,
+        profile["mode"],
+        f"{profile['x']}x{profile['y']}",
+        format_scale(profile["scale"]),
+    ]
+    if profile["transform"]:
+        parts += ["transform", str(profile["transform"])]
+    if profile["vrr"]:
+        parts += ["vrr", "1"]
+    if profile["mirror"]:
+        parts += ["mirror", profile["mirror"]]
+    return ", ".join(parts)
+
+
+def render_layout(state: dict) -> str:
+    lines = [
+        "# Gerado por `monitor-layout apply` a partir de monitors.json.",
+        "# Edite pelo painel Monitores do Centro de Controle ou por:",
+        "#   monitor-layout set HDMI-A-1 --x 1366 --y 0 && monitor-layout commit",
+        "",
+    ]
+    for name, profile in sorted(state["monitors"].items()):
+        lines.append(f"monitor = {monitor_line(name, profile)}")
+
+    lines += [
+        "",
+        "# Saidas que nao estao no monitors.json: posicao automatica, sem escala.",
+        "monitor = , preferred, auto, 1",
+    ]
+
+    primary = state["primary"]
+    if primary and state["monitors"].get(primary, {}).get("enabled", True):
+        lines += [
+            "",
+            f"# Monitor principal: e nele que o workspace 1 nasce e o foco comeca.",
+            f"workspace = 1, monitor:{primary}, default:true",
+            f"exec-once = hyprctl dispatch focusmonitor {primary}",
+        ]
+
+    return "\n".join(lines) + "\n"
+
+
+def write_layout(state: dict) -> bool:
+    rendered = render_layout(state)
+    if LAYOUT.exists() and LAYOUT.read_text(encoding="utf-8") == rendered:
+        return False
+    LAYOUT.parent.mkdir(parents=True, exist_ok=True)
+    temporary = LAYOUT.with_suffix(".conf.tmp")
+    temporary.write_text(rendered, encoding="utf-8")
+    temporary.replace(LAYOUT)
+    return True
+
+
+# ── validacao ───────────────────────────────────────────────────────────────
+
+
+def nearest_valid_scale(width: int, scale: float) -> float:
+    """A escala utilizavel mais proxima que ainda da largura inteira."""
+    candidates = []
+    for step in range(int(SCALE_MIN / SCALE_STEP), int(SCALE_MAX / SCALE_STEP) + 1):
+        candidate = round(step * SCALE_STEP, 6)
+        if abs(width / candidate - round(width / candidate)) < 1e-6:
+            candidates.append(candidate)
+    if not candidates:
+        return 1.0
+    return min(candidates, key=lambda value: abs(value - scale))
+
+
+def check_scale(name: str, width: int, scale: float) -> None:
+    if width <= 0:
+        return
+    scaled = width / scale
+    if abs(scaled - round(scaled)) < 1e-4:
+        return
+    suggestion = nearest_valid_scale(width, scale)
+    die(
+        f"escala {format_scale(scale)} em {name} nao da pixel inteiro "
+        f"({width} / {format_scale(scale)} = {scaled:.3f}); "
+        f"a mais proxima que serve e {format_scale(suggestion)}"
+    )
+
+
+def check_mode(name: str, mode: str, available: list[str]) -> None:
+    if mode == "preferred" or not available:
+        return
+    normalized = {entry.replace("Hz", "").strip(): entry for entry in available}
+    if mode in normalized:
+        return
+    width_height, _, rate = mode.partition("@")
+    matches = [
+        candidate
+        for candidate in normalized
+        if candidate.startswith(width_height + "@")
+    ]
+    if matches:
+        die(
+            f"{name} nao anuncia {mode}; taxas disponiveis nessa resolucao: "
+            + ", ".join(sorted(match.partition("@")[2] for match in matches))
+        )
+    die(f"{name} nao anuncia o modo {mode}")
+
+
+def check_overlap(state: dict, live: dict[str, dict]) -> None:
+    boxes = []
+    for name, profile in state["monitors"].items():
+        if not profile["enabled"] or profile["mirror"]:
+            continue
+        width, height = effective_size(name, profile, live)
+        boxes.append((name, profile["x"], profile["y"], width, height))
+
+    for index, (name, x, y, width, height) in enumerate(boxes):
+        for other, ox, oy, owidth, oheight in boxes[index + 1 :]:
+            if x < ox + owidth and ox < x + width and y < oy + oheight and oy < y + height:
+                die(f"{name} e {other} ficariam sobrepostos")
+
+
+def effective_size(name: str, profile: dict, live: dict[str, dict]) -> tuple[int, int]:
+    """Tamanho logico da tela, ja com escala e rotacao."""
+    info = live.get(name, {})
+    if profile["mode"] == "preferred":
+        width = int(info.get("width") or 1920)
+        height = int(info.get("height") or 1080)
+    else:
+        width_height = profile["mode"].partition("@")[0]
+        width, height = (int(value) for value in width_height.split("x"))
+
+    if profile["transform"] in (1, 3, 5, 7):
+        width, height = height, width
+    scale = profile["scale"] or 1.0
+    return round(width / scale), round(height / scale)
+
+
+# ── subcomandos ─────────────────────────────────────────────────────────────
+
+
+def merged_view() -> dict:
+    """O que o painel consome: telas vivas + o que esta salvo/pendente."""
+    state = load_working()
+    saved = load_state()
+    live = {monitor["name"]: monitor for monitor in live_monitors()}
+
+    entries = []
+    for name in sorted(set(live) | set(state["monitors"])):
+        info = live.get(name, {})
+        profile = state["monitors"].get(name, dict(DEFAULTS))
+        width, height = effective_size(name, profile, live)
+        entries.append(
+            {
+                "name": name,
+                "description": info.get("description", ""),
+                "make": info.get("make", ""),
+                "model": info.get("model", name),
+                "connected": name in live,
+                "current": {
+                    "x": info.get("x", profile["x"]),
+                    "y": info.get("y", profile["y"]),
+                    "width": info.get("width", 0),
+                    "height": info.get("height", 0),
+                    "refresh": round(float(info.get("refreshRate", 0)), 2),
+                    "scale": float(info.get("scale", 1)),
+                    "transform": info.get("transform", 0),
+                    "vrr": bool(info.get("vrr", False)),
+                    "disabled": bool(info.get("disabled", False)),
+                    "focused": bool(info.get("focused", False)),
+                },
+                "logicalWidth": width,
+                "logicalHeight": height,
+                "availableModes": [
+                    entry.replace("Hz", "").strip()
+                    for entry in info.get("availableModes", [])
+                ],
+                "primary": name == state["primary"],
+                **profile,
+            }
+        )
+
+    return {
+        "primary": state["primary"],
+        "menubar_on_primary": state["menubar_on_primary"],
+        "pending": PENDING.exists(),
+        "dirty": state != saved,
+        "monitors": entries,
+    }
+
+
+def cmd_list(_: argparse.Namespace) -> None:
+    print(json.dumps(merged_view(), ensure_ascii=False, indent=2))
+
+
+def cmd_waybar(_: argparse.Namespace) -> None:
+    view = merged_view()
+    active = [entry for entry in view["monitors"] if entry["connected"] and entry["enabled"]]
+    primary = view["primary"]
+    count = len(active)
+    detail = "\n".join(
+        f"{entry['name']} · {entry['current']['width']}x{entry['current']['height']}"
+        f"@{entry['current']['refresh']:g}Hz"
+        + (" · principal" if entry["primary"] else "")
+        for entry in active
+    )
+    print(
+        json.dumps(
+            {
+                "text": f"󰍹 {count}",
+                "tooltip": (f"{count} tela{'s' if count != 1 else ''} ativa"
+                            f"{'s' if count != 1 else ''}"
+                            + (f" · principal: {primary}" if primary else "")
+                            + ("\n" + detail if detail else "")),
+                "class": "monitors",
+                "alt": primary,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def cmd_summary(_: argparse.Namespace) -> None:
+    """Uma linha para o subtitulo do ladrilho no Centro de Controle."""
+    view = merged_view()
+    active = sum(1 for entry in view["monitors"] if entry["connected"] and entry["enabled"])
+    line = f"{active} tela" + ("s" if active != 1 else "")
+    if view["primary"]:
+        line += f" · {view['primary']} principal"
+    print(line)
+
+
+def cmd_set(args: argparse.Namespace) -> None:
+    state = load_working()
+    live = {monitor["name"]: monitor for monitor in live_monitors()}
+    name = args.name
+    if name not in live and name not in state["monitors"]:
+        die(f"saida desconhecida: {name}")
+
+    profile = dict(state["monitors"].get(name, DEFAULTS))
+    for key in ("x", "y", "transform"):
+        if getattr(args, key) is not None:
+            profile[key] = getattr(args, key)
+    if args.mode is not None:
+        mode = args.mode.replace("Hz", "").strip()
+        if mode != "preferred" and not MODE_RE.fullmatch(mode):
+            die(f"modo invalido: {args.mode!r}")
+        profile["mode"] = mode
+    if args.scale is not None:
+        profile["scale"] = args.scale
+    if args.vrr is not None:
+        profile["vrr"] = args.vrr
+    if args.mirror is not None:
+        profile["mirror"] = args.mirror.strip()
+    if args.enabled is not None:
+        profile["enabled"] = args.enabled
+
+    profile = normalize(name, profile)
+    state["monitors"][name] = profile
+
+    if profile["enabled"]:
+        available = [
+            entry.replace("Hz", "").strip()
+            for entry in live.get(name, {}).get("availableModes", [])
+        ]
+        check_mode(name, profile["mode"], available)
+        width = effective_size(name, {**profile, "scale": 1.0}, live)[0]
+        check_scale(name, width, profile["scale"])
+        if profile["mirror"] and profile["mirror"] not in live:
+            die(f"nao da para espelhar {profile['mirror']}: saida nao conectada")
+    else:
+        enabled = [p for p in state["monitors"].values() if p["enabled"]]
+        if not enabled:
+            die("nao da para desligar a ultima saida ativa")
+
+    check_overlap(state, live)
+    apply_live(name, profile)
+    save_state(state, PENDING)
+    print(f"{name}: {monitor_line(name, profile)}")
+
+
+def cmd_commit(_: argparse.Namespace) -> None:
+    if not PENDING.exists():
+        print("nada pendente")
+        return
+    state = load_state(PENDING)
+    save_state(state)
+    PENDING.unlink()
+    write_layout(state)
+    reload_hyprland()
+    refresh_waybar()
+    print("configuracao salva")
+
+
+def cmd_revert(_: argparse.Namespace) -> None:
+    if PENDING.exists():
+        PENDING.unlink()
+    # O Hyprland relê o .conf em disco, que ainda descreve o ultimo estado bom.
+    reload_hyprland()
+    print("configuracao revertida")
+
+
+def refresh_waybar() -> None:
+    """RTMIN+9 acorda o modulo custom/monitors sem esperar o intervalo."""
+    subprocess.run(
+        ["pkill", "-RTMIN+9", "-x", "waybar"], capture_output=True, check=False
+    )
+
+
+def restart_shell_pieces() -> None:
+    home_bin = Path.home() / ".local" / "bin"
+    for target in ("waybar-start", "dock-start"):
+        script = home_bin / target
+        if script.exists():
+            subprocess.Popen(
+                ["setsid", str(script)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+
+def cmd_primary(args: argparse.Namespace) -> None:
+    state = load_working()
+    live = {monitor["name"]: monitor for monitor in live_monitors()}
+    if args.none:
+        state["primary"] = ""
+        state["menubar_on_primary"] = False
+    else:
+        if not args.name:
+            die("informe o nome da saida ou use --none")
+        if args.name not in live and args.name not in state["monitors"]:
+            die(f"saida desconhecida: {args.name}")
+        state["primary"] = args.name
+    if args.menubar is not None:
+        state["menubar_on_primary"] = args.menubar
+
+    save_state(state)
+    if PENDING.exists():
+        PENDING.unlink()
+    write_layout(state)
+    reload_hyprland()
+    refresh_waybar()
+    restart_shell_pieces()
+    print("principal: " + (state["primary"] or "nenhuma"))
+
+
+def cmd_menubar(args: argparse.Namespace) -> None:
+    state = load_state()
+    state["menubar_on_primary"] = args.value
+    save_state(state)
+    refresh_waybar()
+    restart_shell_pieces()
+    print(f"menubar_on_primary={str(args.value).lower()}")
+
+
+def cmd_apply(_: argparse.Namespace) -> None:
+    if PENDING.exists():
+        PENDING.unlink()
+    state = load_state()
+    write_layout(state)
+    reload_hyprland()
+    refresh_waybar()
+    print("layout aplicado")
+
+
+def cmd_waybar_args(_: argparse.Namespace) -> None:
+    state = load_state()
+    if state["menubar_on_primary"] and state["primary"]:
+        print(state["primary"])
+
+
+def cmd_dock_args(_: argparse.Namespace) -> None:
+    state = load_state()
+    if state["primary"]:
+        print(state["primary"])
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subcommands = parser.add_subparsers(dest="command", required=True)
+
+    subcommands.add_parser("list", help="estado dos monitores em JSON").set_defaults(
+        handler=cmd_list
+    )
+    subcommands.add_parser("waybar", help=argparse.SUPPRESS).set_defaults(
+        handler=cmd_waybar
+    )
+    subcommands.add_parser("summary", help=argparse.SUPPRESS).set_defaults(
+        handler=cmd_summary
+    )
+    subcommands.add_parser(
+        "commit", help="salva o que foi aplicado ao vivo"
+    ).set_defaults(handler=cmd_commit)
+    subcommands.add_parser(
+        "revert", help="descarta o pendente e volta ao ultimo estado salvo"
+    ).set_defaults(handler=cmd_revert)
+    subcommands.add_parser(
+        "apply", help="regenera o .conf a partir do JSON e recarrega"
+    ).set_defaults(handler=cmd_apply)
+    subcommands.add_parser("waybar-args", help=argparse.SUPPRESS).set_defaults(
+        handler=cmd_waybar_args
+    )
+    subcommands.add_parser("dock-args", help=argparse.SUPPRESS).set_defaults(
+        handler=cmd_dock_args
+    )
+
+    set_parser = subcommands.add_parser(
+        "set", help="aplica ao vivo, sem salvar (confirme com commit)"
+    )
+    set_parser.add_argument("name")
+    set_parser.add_argument("--x", type=int)
+    set_parser.add_argument("--y", type=int)
+    set_parser.add_argument("--mode", help="'preferred' ou LARGURAxALTURA@TAXA")
+    set_parser.add_argument("--scale", type=float)
+    set_parser.add_argument("--transform", type=int, choices=range(8))
+    set_parser.add_argument("--mirror", help="nome da saida espelhada; vazio desliga")
+    set_parser.add_argument(
+        "--vrr", dest="vrr", action=argparse.BooleanOptionalAction, default=None
+    )
+    set_parser.add_argument(
+        "--enable", dest="enabled", action="store_true", default=None
+    )
+    set_parser.add_argument("--disable", dest="enabled", action="store_false")
+    set_parser.set_defaults(handler=cmd_set)
+
+    primary_parser = subcommands.add_parser(
+        "primary", help="define o monitor principal"
+    )
+    primary_parser.add_argument("name", nargs="?")
+    primary_parser.add_argument(
+        "--none", action="store_true", help="deixa sem monitor principal"
+    )
+    primary_parser.add_argument(
+        "--menubar", action=argparse.BooleanOptionalAction, default=None
+    )
+    primary_parser.set_defaults(handler=cmd_primary)
+
+    menubar_parser = subcommands.add_parser(
+        "menubar", help="menubar so no monitor principal"
+    )
+    menubar_parser.add_argument("value", type=lambda v: v.lower() in ("1", "true", "on"))
+    menubar_parser.set_defaults(handler=cmd_menubar)
+
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    args.handler(args)
+
+
+if __name__ == "__main__":
+    main()

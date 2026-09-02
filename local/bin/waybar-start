@@ -1,0 +1,67 @@
+#!/bin/sh
+# Arranca a menubar (Waybar), reiniciando a que estiver a correr.
+#
+# O binario do waybar nao tem flag de saida (so -b/--bar), entao prender a barra
+# ao monitor principal exige a chave "output" no config. Em vez de reescrever o
+# config.jsonc versionado, geramos uma copia em ~/.cache com a chave injetada.
+# Com "menubar so no principal" desligado, arranca o waybar puro — igual a antes.
+
+CONFIG="$HOME/.config/waybar/config.jsonc"
+STYLE="$HOME/.config/waybar/style.css"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/waybar"
+GENERATED="$CACHE/config-generated.json"
+
+pkill -x waybar 2>/dev/null && sleep 0.3
+
+OUTPUT=$("$HOME/.local/bin/monitor-layout" waybar-args 2>/dev/null)
+
+if [ -n "$OUTPUT" ] && [ -r "$CONFIG" ]; then
+    mkdir -p "$CACHE"
+    if python3 - "$CONFIG" "$GENERATED" "$OUTPUT" <<'PY'
+import json
+import re
+import sys
+
+source, target, output = sys.argv[1:4]
+raw = open(source, encoding="utf-8").read()
+
+# Remove os comentarios // que estiverem fora de strings.
+stripped = []
+in_string = escaped = False
+index = 0
+while index < len(raw):
+    char = raw[index]
+    if in_string:
+        stripped.append(char)
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            in_string = False
+        index += 1
+        continue
+    if char == '"':
+        in_string = True
+        stripped.append(char)
+        index += 1
+        continue
+    if char == "/" and raw[index : index + 2] == "//":
+        while index < len(raw) and raw[index] != "\n":
+            index += 1
+        continue
+    stripped.append(char)
+    index += 1
+
+text = re.sub(r",(\s*[}\]])", r"\1", "".join(stripped))
+config = json.loads(text)
+config["output"] = [output]
+open(target, "w", encoding="utf-8").write(json.dumps(config, ensure_ascii=False, indent=2))
+PY
+    then
+        exec env LC_TIME=pt_BR.utf8 waybar -c "$GENERATED" -s "$STYLE"
+    fi
+    echo "waybar-start: nao consegui gerar o config para $OUTPUT; subindo em todas as telas" >&2
+fi
+
+exec env LC_TIME=pt_BR.utf8 waybar

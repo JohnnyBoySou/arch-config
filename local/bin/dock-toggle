@@ -1,5 +1,5 @@
 #!/bin/sh
 # Mostra/esconde a dock (nwg-dock-hyprland), sem tocar na menubar.
 pkill -RTMIN+1 -x nwg-dock-hyprla 2>/dev/null && exit 0
-# não estava a correr: arranca
-exec nwg-dock-hyprland -p bottom -i 44 -x -mb 6 -c "$HOME/.local/bin/app-launcher" -lp start -ico /usr/share/icons/WhiteSur-dark/apps/scalable/view-app-grid.svg -r
+# não estava a correr: arranca (os argumentos vivem no dock-start)
+exec "$HOME/.local/bin/dock-start"
