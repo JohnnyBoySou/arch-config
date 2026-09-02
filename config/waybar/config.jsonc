@@ -74,6 +74,7 @@
   "hyprland/workspaces": {
     "format": "{id}",
     "on-click": "activate",
+    "move-to-monitor": true,
     "sort-by-number": true,
     "persistent-workspaces": { "*": 5 }
   },
