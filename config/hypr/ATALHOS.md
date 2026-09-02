@@ -41,7 +41,8 @@
 | Clique no calendário dos widgets | Mesmo calendário, em painel grande |
 | Clique no volume da menubar | Central de som (saída, microfone, por app) |
 | Clique no card de recursos dos widgets | Painel de energia (perfil, temperaturas, brilho) |
-| Clique no bloco Rede do Centro de Controle | Detalhes da conexão e tráfego ao vivo |
+| Clique no ícone de rede da menubar | Painel de rede (também pelo bloco Rede do Centro de Controle) |
+| Clique em CPU ou memória na menubar | Painel de energia (também pelo card de recursos dos widgets) |
 | Clique no sino da menubar | Central de notificações (`SUPER + N`) |
 | Clique direito no sino | Liga/desliga Não Perturbe |
 | `SUPER + S` | Scratchpad |

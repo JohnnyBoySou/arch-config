@@ -135,10 +135,11 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
   volume de saída e de microfone com medidor de nível ao vivo, troca de dispositivo
   e volume por aplicativo. A engrenagem do painel ainda abre o `pavucontrol` para
   os casos raros (perfis, roteamento fino).
-- O bloco `Rede` do Centro de Controle abre um painel com o enlace real (a máquina é
+- O ícone de rede da menubar (ou o bloco `Rede` do Centro de Controle) abre um painel com o enlace real (a máquina é
   cabeada, com systemd-networkd e sem Wi-Fi/Bluetooth): estado, velocidade negociada,
   IPv4/IPv6, gateway, DNS, MAC e tráfego ao vivo. Um enlace abaixo de 1 Gb/s é sinalizado.
-- O card de CPU/RAM/disco dos widgets abre o painel de energia: perfil (via
+- Os módulos de CPU e memória da menubar, e o card de CPU/RAM/disco dos widgets,
+  abrem o painel de energia: perfil (via
   `power-profiles-daemon`, com o governor em leitura quando o daemon não está instalado),
   frequência média, temperaturas de CPU/GPU/NVMe, brilho do monitor por DDC/CI
   e bateria dos periféricos. A seção de brilho só aparece com `ddcutil` instalado

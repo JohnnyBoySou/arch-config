@@ -145,10 +145,11 @@
 
   "tray": { "icon-size": 15, "spacing": 10 },
 
-  "cpu":    { "format": "󰘚 {usage}%", "interval": 3, "tooltip": false },
-  "memory": { "format": "󰍛 {percentage}%", "interval": 5, "tooltip-format": "{used:0.1f}G / {total:0.1f}G" },
+  "cpu":    { "on-click": "qs -c controlcenter ipc call power toggle", "format": "󰘚 {usage}%", "interval": 3, "tooltip": false },
+  "memory": { "on-click": "qs -c controlcenter ipc call power toggle", "format": "󰍛 {percentage}%", "interval": 5, "tooltip-format": "{used:0.1f}G / {total:0.1f}G" },
 
   "network": {
+    "on-click": "qs -c controlcenter ipc call network toggle",
     "format-wifi": "󰤨",
     "format-ethernet": "󰈀",
     "format-disconnected": "󰤭",
