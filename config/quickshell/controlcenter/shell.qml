@@ -16,6 +16,8 @@ ShellRoot {
     property bool desktopWidgetsVisible: true
     property bool calendarOpen: false
     property bool soundOpen: false
+    property bool networkOpen: false
+    property bool powerOpen: false
 
     // ── controle externo (menubar Waybar / atalho de teclado) ──
     IpcHandler {
@@ -65,6 +67,20 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "network"
+
+        function toggle(): void { root.networkOpen = !root.networkOpen }
+        function hide(): void   { root.networkOpen = false }
+    }
+
+    IpcHandler {
+        target: "power"
+
+        function toggle(): void { root.powerOpen = !root.powerOpen }
+        function hide(): void   { root.powerOpen = false }
+    }
+
+    IpcHandler {
         target: "appearance"
 
         function toggle(): void { root.appearanceOpen = !root.appearanceOpen }
@@ -85,6 +101,7 @@ ShellRoot {
     DesktopWidgets {
         shown: root.desktopWidgetsVisible
         onCalendarClicked: root.calendarOpen = true
+        onPowerClicked: root.powerOpen = true
     }
 
     CalendarPanel {
@@ -95,6 +112,16 @@ ShellRoot {
     SoundPanel {
         open: root.soundOpen
         onClosed: root.soundOpen = false
+    }
+
+    NetworkPanel {
+        open: root.networkOpen
+        onClosed: root.networkOpen = false
+    }
+
+    PowerPanel {
+        open: root.powerOpen
+        onClosed: root.powerOpen = false
     }
 
     AppearanceSettings {
@@ -320,7 +347,10 @@ ShellRoot {
                         label: "Rede"
                         sublabel: root.netUp ? (root.netIface + " · " + root.netAddr) : "Desconectado"
                         active: root.netUp
-                        interactive: false
+                        onToggled: {
+                            root.open = false
+                            root.networkOpen = true
+                        }
                     }
 
                     Tile {

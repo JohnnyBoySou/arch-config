@@ -12,6 +12,9 @@ Scope {
 
     // Emitido ao clicar no cartao de calendario; o shell abre o CalendarPanel.
     signal calendarClicked()
+
+    // Emitido ao clicar no cartao de recursos; o shell abre o PowerPanel.
+    signal powerClicked()
     property date now: new Date()
     property real cpuUsage: 0
     property real memoryUsage: 0
@@ -276,6 +279,22 @@ Scope {
                         value: root.diskUsage
                         accent: Theme.warning
                     }
+                }
+
+                // Abre o painel de energia (PowerPanel).
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 26
+                    color: powerArea.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                }
+
+                MouseArea {
+                    id: powerArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.powerClicked()
                 }
             }
 

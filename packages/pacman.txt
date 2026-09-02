@@ -1,5 +1,6 @@
 amd-ucode
 ark
+aws-cli-v2
 awww
 base
 base-devel
@@ -9,6 +10,8 @@ btrfs-progs
 bun
 cliphist
 cmake
+docker
+docker-compose
 dolphin
 dolphin-plugins
 dunst
@@ -85,6 +88,7 @@ steam
 sudo
 swaync
 swayosd
+terraform
 ttf-jetbrains-mono-nerd
 ttf-nerd-fonts-symbols
 ttf-nerd-fonts-symbols-mono

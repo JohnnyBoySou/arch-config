@@ -40,6 +40,8 @@
 | Clique no relógio da menubar | Calendário navegável |
 | Clique no calendário dos widgets | Mesmo calendário, em painel grande |
 | Clique no volume da menubar | Central de som (saída, microfone, por app) |
+| Clique no card de recursos dos widgets | Painel de energia (perfil, temperaturas, brilho) |
+| Clique no bloco Rede do Centro de Controle | Detalhes da conexão e tráfego ao vivo |
 | `SUPER + S` | Scratchpad |
 
 ## Sistema
