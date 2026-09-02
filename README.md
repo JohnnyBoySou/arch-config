@@ -143,6 +143,14 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
   frequência média, temperaturas de CPU/GPU/NVMe, brilho do monitor por DDC/CI
   (requer `ddcutil` + módulo `i2c-dev`) e bateria dos periféricos. O teclado Logitech
   reporta faixa (`Normal`, `Baixa`…) e não porcentagem — o painel mostra a faixa.
+- As notificações são servidas pelo próprio Quickshell, não mais pelo `swaync` — só um
+  processo pode ser dono de `org.freedesktop.Notifications`, então o `exec-once = swaync`
+  foi removido. Toasts no canto superior direito (crítica não some sozinha), central com
+  histórico pelo sino da menubar ou `SUPER + N`, e Não Perturbe no clique direito do sino
+  (urgência crítica fura o DND, como manda a spec). O módulo da barra não faz polling: o
+  Quickshell manda `RTMIN+8` quando algo muda. O histórico vive em memória e se perde ao
+  reiniciar a sessão. Se as notificações pararem, confira se o `swaync` não voltou a rodar
+  (`pkill -x swaync`) e recarregue com `mac-reload`.
 - O modal aberto pelo módulo de mídia busca letras sincronizadas no LRCLIB e guarda o
   resultado em `~/.cache/music-modal/lyrics`; faixas sem letras continuam com o layout normal.
 - `~/.face` (foto do usuário no hyprlock/SDDM) **não** está aqui, por ser um repositório público — copie a sua para `~/.face`.

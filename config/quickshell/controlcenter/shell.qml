@@ -18,6 +18,7 @@ ShellRoot {
     property bool soundOpen: false
     property bool networkOpen: false
     property bool powerOpen: false
+    property bool notificationsOpen: false
 
     // ── controle externo (menubar Waybar / atalho de teclado) ──
     IpcHandler {
@@ -81,6 +82,26 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "notifications"
+
+        function toggle(): void { root.notificationsOpen = !root.notificationsOpen }
+        function hide(): void   { root.notificationsOpen = false }
+        function dnd(): void    { Notifs.toggleDnd() }
+
+        // Consumido pelo modulo custom/notification da Waybar.
+        function status(): string {
+            const n = Notifs.historyCount
+            return JSON.stringify({
+                text: Notifs.dnd ? (n > 0 ? "󰂛" : "󰂛") : (n > 0 ? "󰂚" : "󰂜"),
+                tooltip: (n === 0 ? "Sem notificações"
+                                  : n + (n > 1 ? " notificações" : " notificação"))
+                         + (Notifs.dnd ? " · Não Perturbe" : ""),
+                class: Notifs.dnd ? "dnd" : (n > 0 ? "notification" : "none")
+            })
+        }
+    }
+
+    IpcHandler {
         target: "appearance"
 
         function toggle(): void { root.appearanceOpen = !root.appearanceOpen }
@@ -124,6 +145,13 @@ ShellRoot {
         onClosed: root.powerOpen = false
     }
 
+    NotificationPopups {}
+
+    NotificationCenter {
+        open: root.notificationsOpen
+        onClosed: root.notificationsOpen = false
+    }
+
     AppearanceSettings {
         open: root.appearanceOpen
         onClosed: root.appearanceOpen = false
@@ -138,7 +166,7 @@ ShellRoot {
     property string netIface: "--"
     property string netAddr: ""
     property bool netUp: false
-    property bool dnd: false
+    readonly property bool dnd: Notifs.dnd
     property bool gameMode: false
     property bool recording: false
 
@@ -159,14 +187,6 @@ ShellRoot {
                     root.netAddr = ""
                 }
             }
-        }
-    }
-
-    Process {
-        id: dndProc
-        command: ["swaync-client", "-D"]
-        stdout: StdioCollector {
-            onStreamFinished: root.dnd = text.trim() === "true"
         }
     }
 
@@ -203,7 +223,6 @@ ShellRoot {
 
     function refreshState() {
         if (!netProc.running) netProc.running = true
-        if (!dndProc.running) dndProc.running = true
         if (!gameModeProc.running) gameModeProc.running = true
         if (!recordingProc.running) recordingProc.running = true
     }
@@ -360,10 +379,7 @@ ShellRoot {
                         sublabel: root.dnd ? "Silenciado" : "Ativo"
                         active: root.dnd
                         activeColor: Theme.warning
-                        onToggled: {
-                            root.dnd = !root.dnd
-                            root.run("swaync-client -d -sw")
-                        }
+                        onToggled: Notifs.toggleDnd()
                     }
                 }
 

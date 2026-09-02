@@ -188,9 +188,9 @@ window#waybar.menubar #tray menu {
 /* A dock agora é o nwg-dock-hyprland — estilo em ~/.config/nwg-dock-hyprland/style.css */
 
 /* botão da central de notificações */
-window#waybar.menubar #custom-notification.notification,
-window#waybar.menubar #custom-notification.dnd-notification { color: #0a84ff; }
-window#waybar.menubar #custom-notification.dnd-none { color: rgba(242, 242, 247, 0.45); }
+window#waybar.menubar #custom-notification.notification { color: #0a84ff; }
+window#waybar.menubar #custom-notification.dnd { color: #ff9f0a; }
+window#waybar.menubar #custom-notification.none { color: rgba(242, 242, 247, 0.45); }
 
 /* ══════════════ módulos novos ══════════════ */
 

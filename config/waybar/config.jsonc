@@ -181,23 +181,15 @@
   },
 
   "custom/notification": {
-    "format": "{icon}",
-    "format-icons": {
-      "notification": "",
-      "none": "",
-      "dnd-notification": "",
-      "dnd-none": "",
-      "inhibited-notification": "",
-      "inhibited-none": "",
-      "dnd-inhibited-notification": "",
-      "dnd-inhibited-none": ""
-    },
+    "format": "{}",
     "return-type": "json",
-    "exec": "swaync-client -swb",
-    "on-click": "swaync-client -t -sw",
-    "on-click-right": "swaync-client -d -sw",
+    "exec": "qs -c controlcenter ipc call notifications status",
+    "interval": "once",
+    "signal": 8,
+    "on-click": "qs -c controlcenter ipc call notifications toggle",
+    "on-click-right": "qs -c controlcenter ipc call notifications dnd",
     "escape": true,
-    "tooltip": false
+    "tooltip": true
   },
 
   "custom/clock": {

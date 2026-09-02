@@ -42,6 +42,8 @@
 | Clique no volume da menubar | Central de som (saída, microfone, por app) |
 | Clique no card de recursos dos widgets | Painel de energia (perfil, temperaturas, brilho) |
 | Clique no bloco Rede do Centro de Controle | Detalhes da conexão e tráfego ao vivo |
+| Clique no sino da menubar | Central de notificações (`SUPER + N`) |
+| Clique direito no sino | Liga/desliga Não Perturbe |
 | `SUPER + S` | Scratchpad |
 
 ## Sistema
