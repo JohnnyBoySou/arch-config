@@ -1,0 +1,49 @@
+{
+  "workspaces": {
+    "1": {
+      "name": "MeetCore",
+      "color": "#0A84FF",
+      "border_size": 1,
+      "rounding": 12,
+      "gaps_in": 5,
+      "gaps_out": 8,
+      "animation": "slidefade 15%"
+    },
+    "2": {
+      "name": "Machine",
+      "color": "#8E8E93",
+      "border_size": 1,
+      "rounding": 12,
+      "gaps_in": 5,
+      "gaps_out": 8,
+      "animation": "slidefade 15%"
+    },
+    "3": {
+      "name": "Disk",
+      "color": "#0A84FF",
+      "border_size": 1,
+      "rounding": 12,
+      "gaps_in": 5,
+      "gaps_out": 8,
+      "animation": "slidefade 15%"
+    },
+    "4": {
+      "name": "Mídia",
+      "color": "#AC8E68",
+      "border_size": 1,
+      "rounding": 12,
+      "gaps_in": 5,
+      "gaps_out": 8,
+      "animation": "slidefade 15%"
+    },
+    "5": {
+      "name": "GitLab",
+      "color": "#FF453A",
+      "border_size": 1,
+      "rounding": 12,
+      "gaps_in": 5,
+      "gaps_out": 8,
+      "animation": "slidefade 15%"
+    }
+  }
+}

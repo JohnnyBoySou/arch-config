@@ -8,6 +8,7 @@ Card {
     property string label: ""
     property string sublabel: ""
     property bool active: false
+    property bool interactive: true
     property color activeColor: Theme.cardActive
 
     signal toggled()
@@ -69,8 +70,9 @@ Card {
     MouseArea {
         id: mouse
         anchors.fill: parent
+        enabled: root.interactive
         hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: root.toggled()
     }
 }

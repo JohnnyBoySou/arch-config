@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Gera previews leves para a galeria sem alterar os wallpapers originais.
+set -euo pipefail
+
+DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
+CACHE="${WALLPAPER_THUMB_DIR:-$HOME/.cache/wallpaper/thumbs}"
+JOBS="${WALLPAPER_THUMB_JOBS:-4}"
+
+mkdir -p "$CACHE"
+
+export WALLPAPER_THUMB_CACHE="$CACHE"
+find "$DIR" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) \
+    -print0 | xargs -0 -r -P "$JOBS" -I{} bash -c '
+        src="$1"
+        name="${src##*/}"
+        thumb="$WALLPAPER_THUMB_CACHE/$name.jpg"
+        [ -f "$thumb" ] && [ "$thumb" -nt "$src" ] && exit 0
+        tmp="$WALLPAPER_THUMB_CACHE/.${name}.${BASHPID}.jpg"
+        if ffmpeg -hide_banner -loglevel error -y -i "$src" \
+                -vf "scale=480:270:force_original_aspect_ratio=increase,crop=480:270" \
+                -frames:v 1 -q:v 5 "$tmp"; then
+            mv -f "$tmp" "$thumb"
+        else
+            unlink "$tmp" 2>/dev/null || true
+        fi
+    ' _ {}
+
+echo "previews: $(find "$CACHE" -maxdepth 1 -type f -name '*.jpg' | wc -l)"

@@ -7,6 +7,8 @@ Item {
     property string icon: ""
     property string label: ""
     property color hoverColor: Theme.cardHover
+    property color backgroundColor: Theme.card
+    property color iconColor: Theme.text
 
     signal activated()
 
@@ -19,7 +21,7 @@ Item {
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Theme.actionBadge; height: Theme.actionBadge; radius: Theme.actionBadge / 2
-            color: area.containsMouse ? root.hoverColor : Theme.card
+            color: area.containsMouse ? root.hoverColor : root.backgroundColor
             border.width: 1
             border.color: Theme.stroke
 
@@ -32,7 +34,7 @@ Item {
                 text: root.icon
                 font.family: Theme.iconFamily
                 font.pixelSize: Theme.iconSize + 2
-                color: Theme.text
+                color: root.iconColor
             }
         }
 

@@ -36,6 +36,7 @@
 | `SUPER + CTRL + SHIFT + ←/→` | Espaço anterior / seguinte |
 | `SUPER + scroll` | Trocar de espaço |
 | 3 dedos no touchpad | Trocar de espaço |
+| Clique no nome do workspace na menubar | Editar nome e cor da borda |
 | `SUPER + S` | Scratchpad |
 
 ## Sistema
@@ -60,10 +61,13 @@
 | `mac-reload` | Recarrega o Hyprland e as duas barras |
 | `mac-setup` | (Re)instala o pacote visual macOS |
 | `dock-toggle` | Mostra/esconde só a dock |
+| `workspace-style list` | Lista nomes e cores dos workspaces |
+| `workspace-style set 2 "Trabalho" "#BF5AF2"` | Muda o nome e a cor do workspace 2 |
 | `nwg-look` | Trocar tema GTK / ícones / cursor pela interface |
 
 ## Arquivos
 - `~/.config/hypr/hyprland.conf` — janelas, atalhos, animações
+- `~/.config/hypr/workspaces.json` — nomes e cores dos workspaces
 - `~/.config/waybar/config.jsonc` — menubar (topo)
 - `~/.config/nwg-dock-hyprland/style.css` — visual da dock (embaixo)
 - `~/.cache/nwg-dock-pinned` — apps fixados na dock (uma linha por `*.desktop`)

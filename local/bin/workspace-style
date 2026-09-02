@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""Nomes na Waybar e cor de borda por workspace do Hyprland."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import time
+
+
+CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+CONFIG = CONFIG_HOME / "hypr" / "workspaces.json"
+RULES = CONFIG_HOME / "hypr" / "workspace-rules.conf"
+COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+ANIMATIONS = ("default", "slide", "slidefade 15%", "slidevert")
+DEFAULTS = {
+    "border_size": 1,
+    "rounding": 12,
+    "gaps_in": 5,
+    "gaps_out": 8,
+    "animation": "slidefade 15%",
+}
+
+
+def die(message: str) -> None:
+    print(f"workspace-style: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def load_profiles() -> dict[str, dict[str, str]]:
+    try:
+        data = json.loads(CONFIG.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        die(f"configuracao nao encontrada: {CONFIG}")
+    except json.JSONDecodeError as error:
+        die(f"JSON invalido em {CONFIG}: {error}")
+
+    profiles = data.get("workspaces")
+    if not isinstance(profiles, dict):
+        die("workspaces.json precisa ter um objeto chamado 'workspaces'")
+
+    normalized: dict[str, dict[str, str]] = {}
+    for raw_id, raw_profile in profiles.items():
+        workspace_id = str(raw_id)
+        if not workspace_id.isdigit() or int(workspace_id) < 1:
+            die(f"ID de workspace invalido: {workspace_id!r}")
+        if not isinstance(raw_profile, dict):
+            die(f"perfil do workspace {workspace_id} precisa ser um objeto")
+
+        name = raw_profile.get("name")
+        color = raw_profile.get("color")
+        if not isinstance(name, str) or not name.strip() or "\n" in name:
+            die(f"nome invalido no workspace {workspace_id}")
+        if not isinstance(color, str) or not COLOR_RE.fullmatch(color):
+            die(f"cor invalida no workspace {workspace_id}; use #RRGGBB")
+        integer_options = {
+            "border_size": (0, 8),
+            "rounding": (0, 30),
+            "gaps_in": (0, 30),
+            "gaps_out": (0, 40),
+        }
+        normalized_profile: dict[str, str | int] = {
+            "name": name.strip(),
+            "color": color.upper(),
+        }
+        for option, (minimum, maximum) in integer_options.items():
+            value = raw_profile.get(option, DEFAULTS[option])
+            if isinstance(value, bool) or not isinstance(value, int):
+                die(f"{option} invalido no workspace {workspace_id}")
+            if value < minimum or value > maximum:
+                die(
+                    f"{option} no workspace {workspace_id} precisa ficar "
+                    f"entre {minimum} e {maximum}"
+                )
+            normalized_profile[option] = value
+
+        animation = raw_profile.get("animation", DEFAULTS["animation"])
+        if animation not in ANIMATIONS:
+            die(f"animacao invalida no workspace {workspace_id}: {animation!r}")
+        normalized_profile["animation"] = animation
+        normalized[workspace_id] = normalized_profile
+
+    return normalized
+
+
+def save_profiles(profiles: dict[str, dict[str, str]]) -> None:
+    ordered = dict(sorted(profiles.items(), key=lambda item: int(item[0])))
+    payload = json.dumps({"workspaces": ordered}, ensure_ascii=False, indent=2) + "\n"
+    temporary = CONFIG.with_suffix(".json.tmp")
+    temporary.write_text(payload, encoding="utf-8")
+    temporary.replace(CONFIG)
+
+
+def render_rules(profiles: dict[str, dict[str, str]]) -> str:
+    lines = [
+        "# Gerado por `workspace-style apply` a partir de workspaces.json.",
+        '# Edite o JSON ou use: workspace-style set ID "Nome" "#RRGGBB"',
+        "",
+    ]
+    for workspace_id, profile in sorted(profiles.items(), key=lambda item: int(item[0])):
+        rgb = profile["color"][1:].lower()
+        workspace_options = [
+            f"bordersize:{profile['border_size']}",
+            f"gapsin:{profile['gaps_in']}",
+            f"gapsout:{profile['gaps_out']}",
+        ]
+        if profile["animation"] != "default":
+            workspace_options.append(f"animation:{profile['animation']}")
+        lines.extend(
+            [
+                f"workspace = {workspace_id}, " + ", ".join(workspace_options),
+                "",
+                "windowrule {",
+                f"    name = workspace-profile-{workspace_id}",
+                "    match {",
+                f"        workspace = {workspace_id}",
+                "    }",
+                f"    border_color = rgba({rgb}ff) rgba({rgb}38)",
+                f"    rounding = {profile['rounding']}",
+                "}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def write_rules(profiles: dict[str, dict[str, str]]) -> bool:
+    rendered = render_rules(profiles)
+    if RULES.exists() and RULES.read_text(encoding="utf-8") == rendered:
+        return False
+    temporary = RULES.with_suffix(".conf.tmp")
+    temporary.write_text(rendered, encoding="utf-8")
+    temporary.replace(RULES)
+    return True
+
+
+def reload_hyprland() -> None:
+    result = subprocess.run(
+        ["hyprctl", "reload"], capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "falha desconhecida"
+        die(f"nao foi possivel recarregar o Hyprland: {message}")
+
+
+def active_workspace_id() -> str:
+    result = subprocess.run(
+        ["hyprctl", "activeworkspace", "-j"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    try:
+        return str(json.loads(result.stdout).get("id", ""))
+    except json.JSONDecodeError:
+        return ""
+
+
+def waybar_payload(profiles: dict[str, dict[str, str]]) -> dict[str, object]:
+    workspace_id = active_workspace_id()
+    profile = profiles.get(workspace_id)
+    if profile is None:
+        name = f"Workspace {workspace_id}" if workspace_id else "Workspace"
+        color = "#8E8E93"
+    else:
+        name = profile["name"]
+        color = profile["color"]
+
+    safe_name = html.escape(name)
+    return {
+        "text": f'<span foreground="{color}">●</span> {safe_name}',
+        "tooltip": f"Workspace {workspace_id or '?'} · {safe_name}\n{color} · clique para editar",
+        "class": ["workspace-profile", f"workspace-{workspace_id or 'unknown'}"],
+        "alt": workspace_id,
+    }
+
+
+def hypr_socket_path() -> Path | None:
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    base = runtime / "hypr"
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if signature:
+        path = base / signature / ".socket2.sock"
+        if path.exists():
+            return path
+    try:
+        instances = sorted(
+            base.iterdir(), key=lambda path: path.stat().st_mtime, reverse=True
+        )
+    except (FileNotFoundError, PermissionError):
+        return None
+    return next(
+        (
+            path / ".socket2.sock"
+            for path in instances
+            if (path / ".socket2.sock").exists()
+        ),
+        None,
+    )
+
+
+def run_waybar() -> None:
+    profiles = load_profiles()
+    config_stamp = CONFIG.stat().st_mtime_ns
+    last_payload = ""
+
+    while True:
+        try:
+            current_stamp = CONFIG.stat().st_mtime_ns
+            if current_stamp != config_stamp:
+                profiles = load_profiles()
+                config_stamp = current_stamp
+
+            payload = json.dumps(waybar_payload(profiles), ensure_ascii=False)
+            if payload != last_payload:
+                print(payload, flush=True)
+                last_payload = payload
+
+            path = hypr_socket_path()
+            if path is None:
+                time.sleep(1)
+                continue
+
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                stream.settimeout(1)
+                stream.connect(str(path))
+                while True:
+                    try:
+                        event = stream.recv(4096)
+                    except TimeoutError:
+                        break
+                    if not event:
+                        break
+                    if any(
+                        marker in event
+                        for marker in (
+                            b"workspace>>",
+                            b"workspacev2>>",
+                            b"focusedmon>>",
+                            b"focusedmonv2>>",
+                            b"configreloaded>>",
+                        )
+                    ):
+                        break
+        except (BrokenPipeError, KeyboardInterrupt):
+            return
+        except (ConnectionError, OSError):
+            time.sleep(0.5)
+
+
+def command_list(profiles: dict[str, dict[str, str]]) -> None:
+    active = active_workspace_id()
+    for workspace_id, profile in sorted(profiles.items(), key=lambda item: int(item[0])):
+        marker = "*" if workspace_id == active else " "
+        print(f"{marker} {workspace_id:>2}  {profile['name']:<20} {profile['color']}")
+
+
+def command_current(profiles: dict[str, dict[str, str]]) -> None:
+    workspace_id = active_workspace_id()
+    profile = profiles.get(workspace_id, {})
+    payload = dict(profile)
+    payload.update(
+        {
+            "id": int(workspace_id) if workspace_id.isdigit() else 0,
+            "name": profile.get("name", f"Workspace {workspace_id}"),
+            "color": profile.get("color", "#8E8E93"),
+        }
+    )
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def command_apply(profiles: dict[str, dict[str, str]], quiet: bool = False) -> None:
+    changed = write_rules(profiles)
+    reload_hyprland()
+    if not quiet:
+        action = "regeradas" if changed else "validadas"
+        print(f"Regras {action}; Hyprland recarregado.")
+
+
+def command_set(workspace_id: str, name: str, color: str | None) -> None:
+    if not workspace_id.isdigit() or int(workspace_id) < 1:
+        die("ID precisa ser um numero inteiro positivo")
+    if not name.strip() or "\n" in name:
+        die("o nome nao pode ser vazio nem conter quebra de linha")
+
+    profiles = load_profiles()
+    if color is None:
+        color = profiles.get(workspace_id, {}).get("color", "#0A84FF")
+    color = color.upper()
+    if not COLOR_RE.fullmatch(color):
+        die("a cor precisa estar no formato #RRGGBB")
+
+    profile = profiles.get(workspace_id, {}).copy()
+    profile.update({"name": name.strip(), "color": color})
+    for option, default in DEFAULTS.items():
+        profile.setdefault(option, default)
+    profiles[workspace_id] = profile
+    save_profiles(profiles)
+    command_apply(profiles, quiet=True)
+    print(f"Workspace {workspace_id}: {name.strip()} ({color})")
+
+
+def command_configure(args: argparse.Namespace) -> None:
+    workspace_id = args.id
+    if not workspace_id.isdigit() or int(workspace_id) < 1:
+        die("ID precisa ser um numero inteiro positivo")
+
+    profiles = load_profiles()
+    profile = profiles.get(workspace_id)
+    if profile is None:
+        die(f"workspace {workspace_id} nao esta configurado")
+
+    if args.name is not None:
+        if not args.name.strip() or "\n" in args.name:
+            die("o nome nao pode ser vazio nem conter quebra de linha")
+        profile["name"] = args.name.strip()
+    if args.color is not None:
+        color = args.color.upper()
+        if not COLOR_RE.fullmatch(color):
+            die("a cor precisa estar no formato #RRGGBB")
+        profile["color"] = color
+
+    ranges = {
+        "border_size": (0, 8),
+        "rounding": (0, 30),
+        "gaps_in": (0, 30),
+        "gaps_out": (0, 40),
+    }
+    for option, (minimum, maximum) in ranges.items():
+        value = getattr(args, option)
+        if value is None:
+            continue
+        if value < minimum or value > maximum:
+            die(f"{option} precisa ficar entre {minimum} e {maximum}")
+        profile[option] = value
+    if args.animation is not None:
+        profile["animation"] = args.animation
+
+    save_profiles(profiles)
+    command_apply(profiles, quiet=True)
+    print(f"Workspace {workspace_id} atualizado")
+
+
+def command_edit() -> None:
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "nano"
+    try:
+        result = subprocess.run([*shlex.split(editor), str(CONFIG)], check=False)
+    except FileNotFoundError:
+        die(f"editor nao encontrado: {editor}")
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+    command_apply(load_profiles())
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Configura nome e cor de borda dos workspaces do Hyprland."
+    )
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    subcommands.add_parser("waybar", help=argparse.SUPPRESS)
+    subcommands.add_parser("list", help="lista nomes e cores")
+    subcommands.add_parser("current", help="mostra o workspace ativo em JSON")
+    subcommands.add_parser("apply", help="gera regras e recarrega o Hyprland")
+    subcommands.add_parser("edit", help="edita o JSON e aplica as alteracoes")
+
+    set_parser = subcommands.add_parser("set", help="define nome e cor de um workspace")
+    set_parser.add_argument("id", help="numero do workspace")
+    set_parser.add_argument("name", help="nome exibido no badge")
+    set_parser.add_argument(
+        "color", nargs="?", help="cor #RRGGBB; preserva a atual se omitida"
+    )
+
+    configure_parser = subcommands.add_parser(
+        "configure", help="altera as opcoes visuais de um workspace"
+    )
+    configure_parser.add_argument("id", help="numero do workspace")
+    configure_parser.add_argument("--name")
+    configure_parser.add_argument("--color")
+    configure_parser.add_argument("--border-size", type=int)
+    configure_parser.add_argument("--rounding", type=int)
+    configure_parser.add_argument("--gaps-in", type=int)
+    configure_parser.add_argument("--gaps-out", type=int)
+    configure_parser.add_argument("--animation", choices=ANIMATIONS)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.command == "waybar":
+        run_waybar()
+        return
+    if args.command == "set":
+        command_set(args.id, args.name, args.color)
+        return
+    if args.command == "configure":
+        command_configure(args)
+        return
+    if args.command == "edit":
+        command_edit()
+        return
+
+    profiles = load_profiles()
+    if args.command == "list":
+        command_list(profiles)
+    elif args.command == "current":
+        command_current(profiles)
+    elif args.command == "apply":
+        command_apply(profiles)
+
+
+if __name__ == "__main__":
+    main()

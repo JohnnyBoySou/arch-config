@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# Ajusta e persiste somente as opcoes visuais expostas no painel Quickshell.
+set -euo pipefail
+
+CONF="${HYPR_APPEARANCE_FILE:-$HOME/.config/hypr/appearance.conf}"
+
+write_defaults() {
+    local tmp
+    mkdir -p "$(dirname "$CONF")"
+    tmp=$(mktemp "${CONF}.XXXXXX")
+    printf '%s\n' \
+        '# Ajustes persistentes controlados por ~/.local/bin/hypr-appearance.' \
+        'general {' \
+        '    gaps_in = 5' \
+        '    gaps_out = 8' \
+        '}' \
+        '' \
+        'decoration {' \
+        '    rounding = 12' \
+        '    inactive_opacity = 0.97' \
+        '' \
+        '    shadow {' \
+        '        enabled = true' \
+        '    }' \
+        '' \
+        '    blur {' \
+        '        enabled = true' \
+        '        size = 7' \
+        '        passes = 3' \
+        '    }' \
+        '}' \
+        '' \
+        'animations {' \
+        '    enabled = true' \
+        '}' > "$tmp"
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$CONF"
+}
+
+query_values() {
+    python3 - <<'PY'
+import json
+import subprocess
+
+options = {
+    "rounding": "decoration:rounding",
+    "gaps_in": "general:gaps_in",
+    "gaps_out": "general:gaps_out",
+    "inactive_opacity": "decoration:inactive_opacity",
+    "blur_enabled": "decoration:blur:enabled",
+    "blur_size": "decoration:blur:size",
+    "blur_passes": "decoration:blur:passes",
+    "shadow_enabled": "decoration:shadow:enabled",
+    "animations_enabled": "animations:enabled",
+}
+
+for name, option in options.items():
+    data = json.loads(subprocess.check_output(
+        ["hyprctl", "getoption", option, "-j"], text=True
+    ))
+    if "float" in data:
+        value = f'{data["float"]:.2f}'
+    elif "int" in data:
+        value = str(data["int"])
+    else:
+        value = str(data.get("custom", "0")).split()[0]
+    print(f"{name}={value}")
+PY
+}
+
+persist_current() {
+    local values tmp
+    values=$(query_values)
+    mkdir -p "$(dirname "$CONF")"
+    tmp=$(mktemp "${CONF}.XXXXXX")
+    python3 - "$tmp" "$values" <<'PY'
+import os
+import sys
+
+target, raw = sys.argv[1:]
+values = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+text = f'''# Ajustes persistentes controlados por ~/.local/bin/hypr-appearance.
+general {{
+    gaps_in = {values["gaps_in"]}
+    gaps_out = {values["gaps_out"]}
+}}
+
+decoration {{
+    rounding = {values["rounding"]}
+    inactive_opacity = {values["inactive_opacity"]}
+
+    shadow {{
+        enabled = {"true" if values["shadow_enabled"] == "1" else "false"}
+    }}
+
+    blur {{
+        enabled = {"true" if values["blur_enabled"] == "1" else "false"}
+        size = {values["blur_size"]}
+        passes = {values["blur_passes"]}
+    }}
+}}
+
+animations {{
+    enabled = {"true" if values["animations_enabled"] == "1" else "false"}
+}}
+'''
+with open(target, "w", encoding="utf-8") as output:
+    output.write(text)
+os.chmod(target, 0o644)
+PY
+    mv -f "$tmp" "$CONF"
+}
+
+validate_integer() {
+    local value="$1" minimum="$2" maximum="$3"
+    [[ "$value" =~ ^[0-9]+$ ]] && (( value >= minimum && value <= maximum ))
+}
+
+cmd_set() {
+    local key="${1:-}" value="${2:-}" option minimum maximum
+    case "$key" in
+        rounding)           option="decoration:rounding"; minimum=0; maximum=30 ;;
+        gaps_in)            option="general:gaps_in"; minimum=0; maximum=30 ;;
+        gaps_out)           option="general:gaps_out"; minimum=0; maximum=40 ;;
+        blur_size)          option="decoration:blur:size"; minimum=1; maximum=20 ;;
+        blur_passes)        option="decoration:blur:passes"; minimum=1; maximum=6 ;;
+        blur_enabled)       option="decoration:blur:enabled" ;;
+        shadow_enabled)     option="decoration:shadow:enabled" ;;
+        animations_enabled) option="animations:enabled" ;;
+        inactive_opacity)
+            option="decoration:inactive_opacity"
+            awk -v value="$value" 'BEGIN { exit !(value >= 0.50 && value <= 1.00) }' || {
+                echo "hypr-appearance: opacidade fora do intervalo 0.50..1.00" >&2
+                exit 2
+            }
+            ;;
+        *) echo "hypr-appearance: opcao desconhecida: $key" >&2; exit 2 ;;
+    esac
+
+    case "$key" in
+        *_enabled)
+            case "$value" in
+                1|true) value=1 ;;
+                0|false) value=0 ;;
+                *) echo "hypr-appearance: booleano invalido: $value" >&2; exit 2 ;;
+            esac
+            ;;
+        inactive_opacity) ;;
+        *) validate_integer "$value" "$minimum" "$maximum" || {
+            echo "hypr-appearance: valor fora do intervalo: $value" >&2
+            exit 2
+        } ;;
+    esac
+
+    hyprctl keyword "$option" "$value" >/dev/null
+    persist_current
+    echo "$key=$value"
+}
+
+case "${1:-status}" in
+    status) query_values ;;
+    set) shift; cmd_set "$@" ;;
+    reset)
+        write_defaults
+        hyprctl reload >/dev/null
+        echo "padrao restaurado"
+        ;;
+    reload)
+        hyprctl reload >/dev/null
+        echo "configuracao recarregada"
+        ;;
+    *) echo "uso: hypr-appearance {status|set OPCAO VALOR|reset|reload}" >&2; exit 2 ;;
+esac

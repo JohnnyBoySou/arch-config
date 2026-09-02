@@ -4,6 +4,7 @@
 # Subcomandos:
 #   daemon        escuta o socket2 e aplica o wallpaper do workspace ativo
 #   apply         reconcilia agora (aplica o wallpaper certo em cada monitor)
+#   set IMAGEM    escolhe a imagem do workspace focado
 #   reroll        sorteia de novo so o workspace ativo
 #   reroll --all  esquece todas as atribuicoes (cada workspace ganha uma nova)
 #   status        mostra qual wallpaper esta atribuido a cada workspace
@@ -126,6 +127,31 @@ cmd_reroll() {
     echo "wallpaper: $(basename "$(readlink "$LINK" 2>/dev/null || echo -)")"
 }
 
+cmd_set() {
+    ensure_hypr_env || exit 1
+    local image="${1:-}" ws
+    [ -n "$image" ] || {
+        echo "uso: wallpaper-workspace set IMAGEM" >&2
+        exit 2
+    }
+    image=$(realpath -e -- "$image" 2>/dev/null) || {
+        echo "wallpaper-workspace: arquivo inexistente: $image" >&2
+        exit 1
+    }
+    case "${image,,}" in
+        *.jpg|*.jpeg|*.png|*.webp) ;;
+        *) echo "wallpaper-workspace: formato não suportado: $image" >&2; exit 1 ;;
+    esac
+    ws=$(monitors | awk '$3==1 {print $2; exit}')
+    [ -n "${ws:-}" ] || {
+        echo "wallpaper-workspace: workspace focado não encontrado" >&2
+        exit 1
+    }
+    ln -sfn "$image" "$STATE/ws-$ws"
+    apply "$DURATION_REROLL"
+    echo "workspace $ws: $(basename "$image")"
+}
+
 cmd_daemon() {
     ensure_hypr_env || exit 1
     trap 'kill 0 2>/dev/null; exit 0' TERM INT
@@ -179,7 +205,8 @@ cmd_status() {
 case "${1:-apply}" in
     daemon) cmd_daemon ;;
     apply)  shift; apply "$@" ;;
+    set)    shift; cmd_set "$@" ;;
     reroll) shift; cmd_reroll "$@" ;;
     status) cmd_status ;;
-    *) echo "uso: wallpaper-workspace {daemon|apply|reroll [--all]|status}" >&2; exit 2 ;;
+    *) echo "uso: wallpaper-workspace {daemon|apply|set IMAGEM|reroll [--all]|status}" >&2; exit 2 ;;
 esac

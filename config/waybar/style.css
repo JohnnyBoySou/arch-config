@@ -86,6 +86,19 @@ window#waybar.menubar #window {
 }
 window#waybar.menubar.empty #window { color: rgba(242, 242, 247, 0.55); }
 
+/* Nome amigavel do workspace ativo. O ponto usa a mesma cor da borda das
+   janelas, fornecida pelo workspace-style no markup do modulo. */
+window#waybar.menubar #custom-workspace-profile {
+  color: rgba(242, 242, 247, 0.88);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  padding: 0 9px;
+  margin: 5px 3px 5px 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 window#waybar.menubar #workspaces { background: transparent; }
 window#waybar.menubar #workspaces button {
   color: rgba(242, 242, 247, 0.45);

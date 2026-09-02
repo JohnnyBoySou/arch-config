@@ -15,6 +15,7 @@ import threading
 import json
 import urllib.request
 import urllib.parse
+import re
 
 # gtk4-layer-shell precisa vir antes de libwayland-client no linker. Como o
 # Python carrega tudo dinamicamente, a unica saida e pre-carregar a lib e
@@ -34,6 +35,7 @@ from gi.repository import (Gtk, Gdk, GLib, Graphene, GdkPixbuf,
 import cairo
 
 CACHE = os.path.expanduser("~/.cache/album-art")
+LYRICS_CACHE = os.path.expanduser("~/.cache/music-modal/lyrics")
 PIDFILE = os.path.expanduser("~/.cache/music-modal.pid")
 SELF = os.path.basename(__file__)
 DEBUG = os.environ.get("MUSIC_MODAL_DEBUG") == "1"
@@ -166,6 +168,93 @@ def hq_art(artist, album, title):
     except Exception:
         open(dst, "wb").close()   # marca negativo para nao repetir a busca
         return None
+
+
+def _parse_lrc(text):
+    """Converte LRC em pares (segundo, texto), aceitando tags repetidas."""
+    lines = []
+    for raw in text.splitlines():
+        stamps = re.findall(r"\[(\d+):(\d+(?:\.\d+)?)\]", raw)
+        if not stamps:
+            continue
+        lyric = re.sub(r"\[(?:\d+):(?:\d+(?:\.\d+)?)\]", "", raw).strip()
+        if not lyric:
+            lyric = "♪"
+        for mins, secs in stamps:
+            lines.append((int(mins) * 60 + float(secs), lyric))
+    return sorted(lines, key=lambda item: item[0])
+
+
+def _lyrics_score(item, title, artist):
+    """Pontua resultados da busca sem exigir metadados perfeitamente iguais."""
+    clean = lambda value: re.sub(r"[^a-z0-9]+", " ", (value or "").casefold()).strip()
+    want_title, want_artist = clean(title), clean(artist)
+    got_title = clean(item.get("trackName"))
+    got_artist = clean(item.get("artistName"))
+    if not item.get("syncedLyrics"):
+        return -1
+    score = 0
+    if want_title == got_title:
+        score += 8
+    elif got_title and (want_title in got_title or got_title in want_title):
+        score += 4
+    if want_artist == got_artist:
+        score += 6
+    elif got_artist and (want_artist in got_artist or got_artist in want_artist):
+        score += 3
+    return score
+
+
+def synced_lyrics(title, artist, duration_usec):
+    """Busca letras sincronizadas no LRCLIB e guarda o resultado em cache."""
+    if not title or not artist:
+        return []
+    duration = max(0, int(duration_usec / 1_000_000))
+    cache_key = hashlib.sha1(
+        f"{title}\0{artist}\0{duration}".casefold().encode()).hexdigest()
+    cache_path = os.path.join(LYRICS_CACHE, cache_key + ".json")
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cached = json.load(fh)
+        return [(float(t), str(line)) for t, line in cached]
+    except Exception:
+        pass
+
+    params = urllib.parse.urlencode({
+        "track_name": title,
+        "artist_name": artist,
+        "duration": duration,
+    })
+    urls = [
+        "https://lrclib.net/api/get?" + params,
+        "https://lrclib.net/api/search?" + urllib.parse.urlencode({
+            "track_name": title, "artist_name": artist}),
+    ]
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "arch-config-music-modal/1.0"})
+            with urllib.request.urlopen(req, timeout=8) as response:
+                payload = json.load(response)
+            candidates = payload if isinstance(payload, list) else [payload]
+            candidates.sort(
+                key=lambda item: _lyrics_score(item, title, artist), reverse=True)
+            for item in candidates:
+                if _lyrics_score(item, title, artist) < 3:
+                    continue
+                parsed = _parse_lrc(item.get("syncedLyrics") or "")
+                if not parsed:
+                    continue
+                os.makedirs(LYRICS_CACHE, exist_ok=True)
+                try:
+                    with open(cache_path, "w", encoding="utf-8") as fh:
+                        json.dump(parsed, fh, ensure_ascii=False)
+                except Exception:
+                    pass
+                return parsed
+        except Exception:
+            continue
+    return []
 
 
 def texture_from_surface(surf):
@@ -664,6 +753,18 @@ window.nowplaying { background: transparent; }
   font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
   font-size: 11px; font-weight: 500; color: rgba(242, 242, 247, 0.50);
 }
+.lyrics {
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.20);
+  padding: 10px 12px;
+}
+.lyric {
+  font-family: "SF Pro Text", "Inter", "Noto Sans", sans-serif;
+  font-size: 11px; font-weight: 500; color: rgba(242, 242, 247, 0.38);
+}
+.lyric.active {
+  font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.96);
+}
 .time {
   font-family: "JetBrainsMono Nerd Font", monospace;
   font-size: 11px; color: rgba(242, 242, 247, 0.62);
@@ -708,6 +809,9 @@ class Modal:
     def __init__(self, app):
         self.app = app
         self.trackid = None
+        self.lyrics_key = None
+        self.lyrics = []
+        self.lyric_index = None
         self.art_src = None
         self.hq_tried = set()
         self.spectrum = AudioSpectrum()
@@ -809,6 +913,23 @@ class Modal:
         self.l_album.set_margin_top(3)
         box.append(self.l_album)
 
+        self.lyrics_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.lyrics_box.add_css_class("lyrics")
+        self.lyrics_box.set_margin_top(14)
+        self.lyrics_box.set_visible(False)
+        self.lyric_labels = []
+        for index in range(3):
+            label = Gtk.Label(label="", xalign=0.5)
+            label.add_css_class("lyric")
+            if index == 1:
+                label.add_css_class("active")
+            label.set_wrap(True)
+            label.set_justify(Gtk.Justification.CENTER)
+            label.set_max_width_chars(34)
+            self.lyrics_box.append(label)
+            self.lyric_labels.append(label)
+        box.append(self.lyrics_box)
+
         prog = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         prog.set_margin_top(16)
         self.l_pos = Gtk.Label(label="0:00")
@@ -904,6 +1025,7 @@ class Modal:
             self.l_artist.set_text("")
             self.l_album.set_text("")
             self.stage.set_spinning(False)
+            self.lyrics_box.set_visible(False)
             self.bar.set_fraction(0)
             return GLib.SOURCE_CONTINUE
 
@@ -921,11 +1043,60 @@ class Modal:
             self.l_dur.set_text("--:--")
         self.l_pos.set_text(mmss(d["position"]))
 
+        lyrics_key = (d["title"], d["artist"], d["length"])
+        if lyrics_key != self.lyrics_key:
+            self._load_lyrics(d, lyrics_key)
+        self._sync_lyrics(d["position"])
+
         if d["trackid"] != self.trackid:
             self.trackid = d["trackid"]
             self._load_art(d)
 
         return GLib.SOURCE_CONTINUE
+
+    def _load_lyrics(self, d, key):
+        self.lyrics_key = key
+        self.lyrics = []
+        self.lyric_index = None
+        self.lyrics_box.set_visible(False)
+
+        def work():
+            result = synced_lyrics(d["title"], d["artist"], d["length"])
+
+            def apply():
+                if self.lyrics_key != key:
+                    return GLib.SOURCE_REMOVE
+                self.lyrics = result
+                self.lyric_index = None
+                self.lyrics_box.set_visible(bool(result))
+                self._sync_lyrics(d["position"], force=True)
+                return GLib.SOURCE_REMOVE
+
+            GLib.idle_add(apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _sync_lyrics(self, position_usec, force=False):
+        if not self.lyrics:
+            return
+        position = position_usec / 1_000_000.0
+        active = -1
+        for index, (stamp, _line) in enumerate(self.lyrics):
+            if stamp <= position + 0.12:
+                active = index
+            else:
+                break
+        if active == self.lyric_index and not force:
+            return
+        self.lyric_index = active
+        slots = (active - 1, active, active + 1)
+        for label, index in zip(self.lyric_labels, slots):
+            if 0 <= index < len(self.lyrics):
+                label.set_text(self.lyrics[index][1])
+                label.set_visible(True)
+            else:
+                label.set_text("")
+                label.set_visible(False)
 
     def _load_art(self, d):
         path = art_path(d["art"])

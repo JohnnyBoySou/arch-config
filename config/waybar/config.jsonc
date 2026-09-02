@@ -13,7 +13,7 @@
   "margin-right": 10,
   "exclusive": true,
 
-  "modules-left":   ["custom/apple", "hyprland/window"],
+  "modules-left":   ["custom/apple", "hyprland/window", "custom/workspace-profile"],
   "modules-center": ["hyprland/workspaces"],
   "modules-right":  [
     "custom/recorder",
@@ -61,6 +61,14 @@
       "nwg-look": "Aparência",
       "qt6ct": "Qt6 Settings"
     }
+  },
+
+  "custom/workspace-profile": {
+    "exec": "/home/sousa/.local/bin/workspace-style waybar",
+    "return-type": "json",
+    "restart-interval": 2,
+    "escape": false,
+    "on-click": "qs -c controlcenter ipc call workspaceeditor openEditor"
   },
 
   "hyprland/workspaces": {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Baixa wallpapers de anime do Wallhaven (SFW) para ~/Pictures/Wallpapers/anime.
 # Uso: wallpaper-fetch [quantidade] [query...]
+#      wallpaper-fetch --quick [quantidade] [query...]
 #   wallpaper-fetch                                -> 30 imagens das queries padrao
 #   wallpaper-fetch 15 "anime girl sword"
 #   WALLPAPER_PREFIX=cozy wallpaper-fetch 20 "anime scenery"   -> prefixo do arquivo
@@ -11,6 +12,11 @@
 set -euo pipefail
 
 DIR="${WALLPAPER_DIR:-$HOME/Pictures/Wallpapers/anime}"
+QUICK=0
+if [ "${1:-}" = "--quick" ]; then
+    QUICK=1
+    shift
+fi
 LIMIT="${1:-30}"
 PREFIX="${WALLPAPER_PREFIX:-girl}"
 PURITY="${WALLPAPER_PURITY:-100}"
@@ -18,6 +24,8 @@ shift || true
 
 if [ "$#" -gt 0 ]; then
     QUERIES=("$@")
+elif [ "$QUICK" = 1 ]; then
+    QUERIES=("anime scenery")
 else
     QUERIES=("anime girl" "anime girls" "original characters"
              "anime girl city" "anime girl sky" "anime girl flowers")
@@ -36,9 +44,17 @@ if [ -n "${WALLHAVEN_API_KEY:-}" ]; then
 elif [ "${PURITY:2:1}" = "1" ]; then
     echo "aviso: purity nsfw pedido sem WALLHAVEN_API_KEY - o wallhaven vai ignorar esse bit" >&2
 fi
+if [ "$QUICK" = 1 ]; then
+    SORTS=(toplist)
+    PAGES=(1)
+else
+    SORTS=(toplist favorites relevance)
+    PAGES=(1 2)
+fi
+
 urls=$(for q in "${QUERIES[@]}"; do
-    for sort in toplist favorites relevance; do
-        for page in 1 2; do
+    for sort in "${SORTS[@]}"; do
+        for page in "${PAGES[@]}"; do
             curl -sG "https://wallhaven.cc/api/v1/search" \
                 --data-urlencode "q=$q" \
                 -d categories=010 -d "purity=$PURITY" "${api_key_arg[@]}" \
@@ -49,7 +65,7 @@ urls=$(for q in "${QUERIES[@]}"; do
 try: d=json.load(sys.stdin)
 except Exception: sys.exit()
 for i in d.get("data",[]): print(i["id"], i["path"])'
-            sleep 1.5   # respeita o rate limit (45 req/min)
+            [ "$QUICK" = 1 ] || sleep 1.5   # respeita o rate limit (45 req/min)
         done
     done
 done | sort -u -k1,1)
