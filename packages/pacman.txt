@@ -10,6 +10,7 @@ btrfs-progs
 bun
 cliphist
 cmake
+ddcutil
 docker
 docker-compose
 dolphin
@@ -72,6 +73,7 @@ pipewire-pulse
 polkit-kde-agent
 postgresql
 postgresql-libs
+power-profiles-daemon
 python-cairo
 python-gobject
 qt5-wayland

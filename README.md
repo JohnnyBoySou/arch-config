@@ -141,7 +141,10 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
 - O card de CPU/RAM/disco dos widgets abre o painel de energia: perfil (via
   `power-profiles-daemon`, com o governor em leitura quando o daemon não está instalado),
   frequência média, temperaturas de CPU/GPU/NVMe, brilho do monitor por DDC/CI
-  (requer `ddcutil` + módulo `i2c-dev`) e bateria dos periféricos. O teclado Logitech
+  e bateria dos periféricos. A seção de brilho só aparece com `ddcutil` instalado
+  **e** `/dev/i2c-*` presente (módulo `i2c-dev` carregado e usuário no grupo `i2c`);
+  o `power-profiles-daemon` precisa de `systemctl enable` para valer após o boot,
+  senão sobe só por ativação DBus. O teclado Logitech
   reporta faixa (`Normal`, `Baixa`…) e não porcentagem — o painel mostra a faixa.
 - As notificações são servidas pelo próprio Quickshell, não mais pelo `swaync` — só um
   processo pode ser dono de `org.freedesktop.Notifications`, então o `exec-once = swaync`

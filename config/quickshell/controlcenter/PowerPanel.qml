@@ -71,7 +71,8 @@ Scope {
             "  echo \"profile=$(powerprofilesctl get 2>/dev/null)\";" +
             "  echo \"profiles=$(powerprofilesctl list 2>/dev/null | sed -n 's/^[ *]*\\([a-z-]*\\):$/\\1/p' | tr '\\n' ' ')\";" +
             "fi;" +
-            "command -v ddcutil >/dev/null 2>&1 && echo ddc=1 || echo ddc=0;" +
+            "if command -v ddcutil >/dev/null 2>&1 && ls /dev/i2c-* >/dev/null 2>&1;" +
+            "  then echo ddc=1; else echo ddc=0; fi;" +
             "echo \"governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)\";" +
             "echo \"governors=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null)\";" +
             "echo \"cores=$(nproc)\";" +
@@ -141,7 +142,10 @@ Scope {
         stdout: StdioCollector {
             onStreamFinished: {
                 const v = parseInt(text.trim())
-                if (!isNaN(v)) root.brightness = v
+                // -2 marca leitura falha: o monitor pode estar com DDC/CI
+                // desligado no proprio menu, ou o usuario ainda nao esta no
+                // grupo i2c (o usermod so vale no proximo login).
+                root.brightness = isNaN(v) ? -2 : v
             }
         }
     }
@@ -460,6 +464,7 @@ Scope {
 
                     SliderRow {
                         width: parent.width
+                        visible: root.brightness >= 0
                         icon: "󰃟"
                         fill: Theme.warning
                         value: root.brightness >= 0 ? root.brightness / 100 : 0
@@ -471,9 +476,15 @@ Scope {
                     }
 
                     Text {
-                        text: root.brightness >= 0
-                              ? root.brightness + "%  ·  via DDC/CI"
-                              : "lendo do monitor…"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: {
+                            if (root.brightness >= 0)
+                                return root.brightness + "%  ·  via DDC/CI"
+                            if (root.brightness === -2)
+                                return "Não consegui ler o monitor. Confira o DDC/CI no menu dele e se você já está no grupo i2c (exige novo login)."
+                            return "lendo do monitor…"
+                        }
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         color: Theme.textDim
