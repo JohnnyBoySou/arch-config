@@ -127,6 +127,14 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
 - A engrenagem do Centro de Controle abre os ajustes persistentes de aparência do
   Hyprland: blur, sombras, animações, arredondamento, gaps e opacidade. Os valores
   ficam em `~/.config/hypr/appearance.conf`; `hypr-appearance reset` restaura o padrão.
+- O calendário do widget de desktop é clicável: abre um painel navegável (mês a mês,
+  `‹`/`›`, setas do teclado, `Hoje`) com feriados nacionais calculados offline —
+  os fixos e os móveis derivados da Páscoa (Carnaval, Sexta-feira Santa, Corpus Christi).
+  Também abre pelo relógio da menubar ou com `qs -c controlcenter ipc call calendar toggle`.
+- O ícone de volume da menubar abre a **central de som** no lugar do `pavucontrol`:
+  volume de saída e de microfone com medidor de nível ao vivo, troca de dispositivo
+  e volume por aplicativo. A engrenagem do painel ainda abre o `pavucontrol` para
+  os casos raros (perfis, roteamento fino).
 - O modal aberto pelo módulo de mídia busca letras sincronizadas no LRCLIB e guarda o
   resultado em `~/.cache/music-modal/lyrics`; faixas sem letras continuam com o layout normal.
 - `~/.face` (foto do usuário no hyprlock/SDDM) **não** está aqui, por ser um repositório público — copie a sua para `~/.face`.

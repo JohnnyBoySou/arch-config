@@ -160,7 +160,7 @@
     "format": "{icon}",
     "format-muted": "󰝟",
     "format-icons": { "default": ["󰕿", "󰖀", "󰕾"] },
-    "on-click": "pavucontrol",
+    "on-click": "qs -c controlcenter ipc call sound toggle",
     "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
     "scroll-step": 5,
     "tooltip-format": "{volume}%"
@@ -204,6 +204,6 @@
     "exec": "/home/sousa/.local/bin/mac-clock",
     "return-type": "json",
     "interval": 20,
-    "on-click": "gsimplecal || true"
+    "on-click": "qs -c controlcenter ipc call calendar toggle"
   }
 }

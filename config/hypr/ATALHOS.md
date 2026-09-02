@@ -37,6 +37,9 @@
 | `SUPER + scroll` | Trocar de espaço |
 | 3 dedos no touchpad | Trocar de espaço |
 | Clique no nome do workspace na menubar | Editar nome e cor da borda |
+| Clique no relógio da menubar | Calendário navegável |
+| Clique no calendário dos widgets | Mesmo calendário, em painel grande |
+| Clique no volume da menubar | Central de som (saída, microfone, por app) |
 | `SUPER + S` | Scratchpad |
 
 ## Sistema

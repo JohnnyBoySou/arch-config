@@ -9,6 +9,9 @@ Scope {
     id: root
 
     property bool shown: true
+
+    // Emitido ao clicar no cartao de calendario; o shell abre o CalendarPanel.
+    signal calendarClicked()
     property date now: new Date()
     property real cpuUsage: 0
     property real memoryUsage: 0
@@ -350,6 +353,22 @@ Scope {
                             }
                         }
                     }
+                }
+
+                // Abre o calendario navegavel (CalendarPanel).
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 26
+                    color: calendarArea.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                }
+
+                MouseArea {
+                    id: calendarArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.calendarClicked()
                 }
             }
         }

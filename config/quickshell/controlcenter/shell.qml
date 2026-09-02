@@ -14,6 +14,8 @@ ShellRoot {
     property bool workspaceEditorOpen: false
     property bool appearanceOpen: false
     property bool desktopWidgetsVisible: true
+    property bool calendarOpen: false
+    property bool soundOpen: false
 
     // ── controle externo (menubar Waybar / atalho de teclado) ──
     IpcHandler {
@@ -48,6 +50,21 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "calendar"
+
+        function toggle(): void { root.calendarOpen = !root.calendarOpen }
+        function show(): void   { root.calendarOpen = true }
+        function hide(): void   { root.calendarOpen = false }
+    }
+
+    IpcHandler {
+        target: "sound"
+
+        function toggle(): void { root.soundOpen = !root.soundOpen }
+        function hide(): void   { root.soundOpen = false }
+    }
+
+    IpcHandler {
         target: "appearance"
 
         function toggle(): void { root.appearanceOpen = !root.appearanceOpen }
@@ -67,6 +84,17 @@ ShellRoot {
 
     DesktopWidgets {
         shown: root.desktopWidgetsVisible
+        onCalendarClicked: root.calendarOpen = true
+    }
+
+    CalendarPanel {
+        open: root.calendarOpen
+        onClosed: root.calendarOpen = false
+    }
+
+    SoundPanel {
+        open: root.soundOpen
+        onClosed: root.soundOpen = false
     }
 
     AppearanceSettings {
