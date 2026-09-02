@@ -121,6 +121,12 @@ Temas do AUR: `whitesur-gtk-theme`, `whitesur-icon-theme`, `kvantum-theme-whites
   da borda, arredondamento, espaçamentos e animação. Para alterar pelo terminal, use
   `workspace-style set 2 "Trabalho" "#BF5AF2"`; `workspace-style list` mostra a
   configuração e `workspace-style edit` abre tudo no editor e aplica ao salvar.
+- O Launchpad (`SUPER` sozinho, ou o botão de grid da dock) fala com uma instância
+  residente do `nwg-drawer`, subida por `drawer-start`. Sem essa instância, qualquer
+  `nwg-drawer -open` **ou `-close`** abre um Launchpad próprio — era daí que vinha o
+  ciclo de "fecho e ele abre de novo", que só um reboot desfazia. O `app-launcher`
+  detecta o residente pelo `-r` na linha de comando, varre os órfãos e sobe um novo
+  quando ele morre; o `drawer-autoclose` não manda `-close` sem residente.
 - O layout dos monitores fica em `~/.config/hypr/monitors.json` e vira o
   `monitor-layout.conf` que o `hyprland.conf` carrega. O bloco **Monitores** do Centro de
   Controle (ou o ícone 󰍹 na menubar) abre um mapa onde se arrasta cada tela para posicionar,

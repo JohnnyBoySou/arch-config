@@ -1,0 +1,10 @@
+#!/bin/sh
+# Sobe a instância residente do Launchpad (nwg-drawer).
+# Os argumentos vivem só aqui: o `exec-once` do Hyprland e o `app-launcher`
+# — que ressuscita o residente quando ele morre — chamam este script, senão os
+# dois conjuntos divergiam e o Launchpad mudava de cara depois de um crash.
+exec nwg-drawer -r \
+    -c 8 -is 72 -spacing 28 \
+    -wm hyprland -term ghostty -fm dolphin \
+    -closebtn none -k \
+    -ml 480 -mr 480 -mt 90 -mb 90

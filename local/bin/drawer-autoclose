@@ -29,7 +29,35 @@ SOCKET = f"{RUNTIME}/hypr/{SIG}/.socket2.sock"
 FECHAR = ("workspace>>", "focusedmon>>", "activespecial>>", "openwindow>>")
 
 
+def residente_vivo() -> bool:
+    """Ha uma instancia `nwg-drawer -r` de pe?
+
+    `pgrep -x nwg-drawer` sozinho nao serve: casa tambem os clientes efemeros
+    `-open`/`-close`. E `pgrep -f` casaria qualquer processo que mencione a
+    string. Entao: nome exato, e destes os que tem `-r` como argumento proprio.
+    """
+    listagem = subprocess.run(
+        ["pgrep", "-x", "nwg-drawer"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for pid in listagem.stdout.split():
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as arquivo:
+                if b"-r" in arquivo.read().split(b"\0"):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def fechar():
+    # Sem residente, `nwg-drawer -close` nao fecha nada: sobe um drawer proprio
+    # e o mostra. Um evento qualquer viraria um Launchpad aberto do nada, e a
+    # cada tentativa de fechar aparecia outro.
+    if not residente_vivo():
+        return
     subprocess.run(
         ["nwg-drawer", "-close"],
         stdout=subprocess.DEVNULL,

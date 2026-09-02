@@ -4,23 +4,58 @@
 # SUPER+algo, basta apertar SUPER de novo para dispensar.
 #
 # Usado tanto pelo bind do SUPER quanto pelo botão de grid do nwg-dock.
+#
+# Sem uma instância residente, qualquer `nwg-drawer -open` OU `-close` sobe um
+# drawer próprio e o desenha na tela: apertar SUPER para fechar abria outro, em
+# ciclo, e a layer órfã ficava presa segurando o teclado. Pior, `pgrep -x
+# nwg-drawer` também casa esses clientes efêmeros, então a checagem antiga nunca
+# percebia que o residente tinha morrido e o estado só saía com um reboot.
+# Daí as duas defesas aqui: procurar o residente pelo `-r` no cmdline, e varrer
+# os órfãos antes de subir um novo.
 
-DRAWER_ARGS="-c 8 -is 72 -spacing 28 -wm hyprland -term ghostty -fm dolphin -closebtn none -k -ml 480 -mr 480 -mt 90 -mb 90"
+set -eu
 
-# Sem instância residente (ex.: crashou): sobe uma e abre.
-if ! pgrep -x nwg-drawer >/dev/null 2>&1; then
-    # shellcheck disable=SC2086
-    nwg-drawer -r $DRAWER_ARGS >/dev/null 2>&1 &
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-        pgrep -x nwg-drawer >/dev/null 2>&1 && break
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/app-launcher.lock"
+
+# `pgrep -x nwg-drawer` sozinho casa os clientes efemeros `-open`/`-close`, e
+# `pgrep -f "nwg-drawer -r"` casa qualquer processo que mencione a string (um
+# shell rodando este proprio script, por exemplo). Entao: processos com o nome
+# exato, e destes os que tem `-r` como argumento proprio.
+resident() {
+    for pid in $(pgrep -x nwg-drawer 2>/dev/null); do
+        if tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -qx -- '-r'; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Um SUPER de cada vez: duas chamadas simultâneas corriam para subir residentes.
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+
+if ! resident; then
+    # Clientes órfãos de um residente que morreu: cada um segura uma layer que
+    # mais ninguém fecha.
+    pkill -x nwg-drawer 2>/dev/null || true
+    # 9>&- e essencial: sem isso o residente herda o descritor do lock e o
+    # segura enquanto viver, e todo SUPER seguinte saía sem fazer nada.
+    "$HOME/.local/bin/drawer-start" >/dev/null 2>&1 9>&- &
+    tentativa=0
+    while [ "$tentativa" -lt 20 ]; do
+        resident && break
+        tentativa=$((tentativa + 1))
         sleep 0.1
     done
+    exec 9>&-
     exec nwg-drawer -open
 fi
 
 # A layer só existe enquanto a janela está visível.
 if hyprctl layers 2>/dev/null | grep -q "namespace: nwg-drawer"; then
+    exec 9>&-
     exec nwg-drawer -close
 else
+    exec 9>&-
     exec nwg-drawer -open
 fi
